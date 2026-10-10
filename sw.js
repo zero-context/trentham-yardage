@@ -1,6 +1,6 @@
 // Keeps the app and its fonts on the phone so it opens with no signal on the course.
 // Course data and rounds live in the page's own storage, not here.
-const VERSION = "ty-v5";
+const VERSION = "ty-v6";
 const CORE = ["./", "./index.html", "./manifest.webmanifest", "./course.json", "./icon-192.png", "./icon-512.png"];
 
 self.addEventListener("install", e => {

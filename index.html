@@ -282,7 +282,9 @@ const OVERPASS = [
   "https://overpass.kumi.systems/api/interpreter",
   "https://overpass.private.coffee/api/interpreter"
 ];
-const DEFAULT_CLUBS = ["Driver","3 Wood","5 Wood","Hybrid","4 Iron","5 Iron","6 Iron","7 Iron","8 Iron","9 Iron","PW","GW","SW","LW"];
+const DEFAULT_CLUBS = ["Driver","15° Wood","19° Wood","4 Iron","5 Iron","6 Iron","7 Iron","8 Iron","9 Iron","PW","SW"];
+const DEFAULT_DIST = { "Driver":200, "15° Wood":190, "19° Wood":180, "4 Iron":170, "5 Iron":160, "6 Iron":150, "7 Iron":140, "8 Iron":130, "9 Iron":110, "PW":90, "SW":60 }; // metres
+const OLD_DEFAULT_CLUBS = ["Driver","3 Wood","5 Wood","Hybrid","4 Iron","5 Iron","6 Iron","7 Iron","8 Iron","9 Iron","PW","GW","SW","LW"];
 const LIES = ["Tee","Fairway","Rough","Bunker","Recovery","Green"];
 const YD = 1.09361;
 
@@ -499,6 +501,11 @@ const st = {
   round: LS.get("ty.round",null), history: LS.get("ty.history",[]),
   lie:"Tee", out:null, loading:false, view:null
 };
+/* a phone that saved settings before the bag above existed still has the old club list and no distances: bring it across */
+if(!Object.keys(st.settings.dist||{}).length){
+  if(JSON.stringify(st.settings.clubs)===JSON.stringify(OLD_DEFAULT_CLUBS)) st.settings.clubs=DEFAULT_CLUBS;
+  st.settings.dist={}; st.settings.clubs.forEach(c=>{ if(DEFAULT_DIST[c]) st.settings.dist[c]=DEFAULT_DIST[c]; });
+}
 const saveSettings = () => LS.set("ty.settings", st.settings);
 const saveRound = () => LS.set("ty.round", st.round);
 const unit = () => st.settings.units==="yd" ? "yd" : "m";
