@@ -46,4 +46,10 @@ suggest 110 | 9 Iron leaves 0 part false
 suggest 205 | 3 Wood leaves 0 part false
 suggest 235 | Driver leaves 0 part false
 suggest 236 | Driver leaves 16 part false
+mixed 329 | Driver 181 leaves 148 part false
+mixed 206 | Driver 181 leaves 25 part false
+mixed 205 | 15° Wood 190 leaves 0 part false
+mixed 188 | 15° Wood 190 leaves 0 part false
+mixed 183 | Driver 181 leaves 0 part false
+mixed 150 | 7 Iron 140 leaves 0 part false
 suggest 150 with empty bag | null | carry 150 with empty bag | null

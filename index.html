@@ -508,7 +508,7 @@ const st = {
   raw: LS.get("ty.raw",null), course:null, pj:null, ll:null,
   hi: LS.get("ty.hole",0), fixes:[], gps:"wait", target:null,
   round: LS.get("ty.round",null), history: LS.get("ty.history",[]),
-  lie:"Tee", out:null, loading:false, view:null
+  lie:"Tee", out:null, loading:false, view:null, hold:false
 };
 /* a phone that saved settings before the bag above existed still has the old club list and no distances: bring it across */
 if(!Object.keys(st.settings.dist||{}).length){
@@ -552,7 +552,10 @@ function onPosition(){
   if(st.settings.auto && P.live && h && st.hi < st.course.holes.length-1){
     const nx=st.course.holes[st.hi+1];
     const atNextTee = nx.tees.some(t=>distPoly(P.xy,t)<8) || dist(P.xy,nx.teePt)<12;
-    if(atNextTee && dist(P.xy,h.gc)>25){ goHole(st.hi+1); toast("On the "+ordinal(nx.n)+" tee"); return; }
+    /* st.hold: you chose this hole by hand (say, to score it from the next tee), so stay on it until you've walked off that tee */
+    if(st.hold && !atNextTee) st.hold=false;
+    const sheetOpen = !!document.querySelector(".sheet:not([hidden])");
+    if(atNextTee && !st.hold && !sheetOpen && dist(P.xy,h.gc)>25){ goHole(st.hi+1); toast("On the "+ordinal(nx.n)+" tee"); return; }
   }
   render();
 }
@@ -780,9 +783,9 @@ function drawMap(){
 }
 
 /* ---------- Holes ---------- */
-function goHole(i){
+function goHole(i, byHand){
   if(!st.course) return;
-  st.hi=Math.max(0, Math.min(st.course.holes.length-1, i)); st.target=null;
+  st.hi=Math.max(0, Math.min(st.course.holes.length-1, i)); st.target=null; st.hold=!!byHand;
   LS.set("ty.hole", st.hi); render();
 }
 
@@ -838,13 +841,13 @@ const penalties = rec => rec.shots.reduce((s,x)=>s+(x.pen||0),0);
 function openOut(){
   const h=curHole(); if(!h) return toast("Course data isn't loaded yet.");
   const rec=holeRec(h.n);
-  st.out={ par:parOf(h)||4, putts: rec.putts!=null ? rec.putts : 2, touched: rec.done };
+  st.out={ n:h.n, par:parOf(h)||4, putts: rec.putts!=null ? rec.putts : 2, touched: rec.done };
   st.out.score = rec.done ? rec.score : rec.shots.length + st.out.putts + penalties(rec);
   if(!rec.done && !rec.shots.length) st.out.score = st.out.par;
   renderOut(); show("outSheet");
 }
 function renderOut(){
-  const h=curHole(), rec=holeRec(h.n), o=st.out;
+  const h=holeByN(st.out.n), rec=holeRec(h.n), o=st.out;
   $("outTitle").textContent="Hole "+h.n;
   chipRow($("parChips"), [3,4,5], o.par, v=>{ o.par=v; if(!o.touched && !rec.shots.length) o.score=v; renderOut(); });
   chipRow($("puttChips"), [0,1,2,3,4,5], o.putts, v=>{ o.putts=v; if(!o.touched && rec.shots.length) o.score=rec.shots.length+v+penalties(rec); renderOut(); });
@@ -854,12 +857,12 @@ function renderOut(){
     (rec.shots.length ? " · "+rec.shots.length+" logged + "+o.putts+" putts"+(penalties(rec)?" + "+penalties(rec)+" penalty":"") : "");
 }
 function saveHole(){
-  const h=curHole(), rec=holeRec(h.n), o=st.out;
+  const h=holeByN(st.out.n), rec=holeRec(h.n), o=st.out, hi=st.course.holes.indexOf(h);
   rec.putts=o.putts; rec.score=o.score; rec.done=true;
   if(o.par !== h.par) st.settings.par[h.n]=o.par; else delete st.settings.par[h.n];
   saveSettings(); saveRound(); hide("outSheet");
   toast("Hole "+h.n+": "+o.score);
-  if(st.hi < st.course.holes.length-1) goHole(st.hi+1); else { render(); openCard(); }
+  if(hi < st.course.holes.length-1) goHole(hi+1); else { render(); openCard(); }
 }
 
 /* ---------- Stats ---------- */
@@ -925,12 +928,12 @@ function renderCard(){
         <div><span class="num">${S.girN?Math.round(S.gir/S.girN*100)+"%":"–"}</span><span class="lab">greens in reg</span></div>
       </div>`);
   }
-  const cl=Object.entries(S.clubs).sort((a,b)=>median(b[1])-median(a[1]));
+  const cl=Object.entries(S.clubs).map(([c,a])=>[c,fullShots(c,a)]).filter(x=>x[1].length).sort((a,b)=>median(b[1])-median(a[1]));
   if(cl.length){
     sec(`<span class="lab">Your club distances (${unit()})</span>
       <div class="scroll"><table><thead><tr><th>Club</th><th>Typical</th><th>Longest</th><th>Shots</th></tr></thead><tbody>
       ${cl.map(([c,a])=>`<tr><td>${esc(c)}</td><td class="big">${fmt(median(a))}</td><td>${fmt(Math.max(...a))}</td><td>${a.length}</td></tr>`).join("")}
-      </tbody></table></div><p class="muted">From where each logged shot was hit to where the next one was. Shots with a penalty are left out.</p>`);
+      </tbody></table></div><p class="muted">From where each logged shot was hit to where the next one was. Shots with a penalty are left out, and so are chips and punches (under 70% of the club's usual distance).</p>`);
   } else sec(`<p class="muted">Club distances appear here once you've logged a few shots with GPS on.</p>`);
 
   if(st.history.length){
@@ -941,24 +944,33 @@ function renderCard(){
   }
 }
 /* ---------- Club suggestion ---------- */
-const MIN_LOGGED = 3; // shots logged with a club before its own typical distance replaces the typed one
+const MIN_LOGGED = 3; // full shots logged with a club before its own typical distance replaces the typed one
+const FULL = 0.7;     // a logged shot shorter than this share of the club's usual distance is a chip or punch, not a guide to the club
+/* the full swings among a club's logged distances. "Usual" is the distance you typed, or failing that the club's own upper quartile */
+function fullShots(c, a){
+  const ref = st.settings.dist[c]>0 ? st.settings.dist[c] : a.slice().sort((x,y)=>x-y)[Math.floor(a.length*0.75)];
+  return a.filter(d=>d>=FULL*ref);
+}
 /* every club with a known distance in metres, longest first */
 function clubDists(){
   const logged=computeStats(st.history.concat(st.round?[st.round]:[])).clubs, out=[];
   st.settings.clubs.forEach(c=>{
-    const a=logged[c], typed=st.settings.dist[c];
-    if(a && a.length>=MIN_LOGGED) out.push({ club:c, d:median(a), n:a.length });
-    else if(typed>0) out.push({ club:c, d:typed, n:0 });
+    const a=logged[c] ? fullShots(c,logged[c]) : [], typed=st.settings.dist[c]>0 ? st.settings.dist[c] : null;
+    if(a.length>=MIN_LOGGED) out.push({ club:c, d:median(a), n:a.length, typed });
+    else if(typed) out.push({ club:c, d:typed, n:0, typed });
   });
   return out.sort((x,y)=>y.d-x.d);
 }
 /*SUG-START*/
 /* the club whose typical distance is nearest to m. leaves = what's left when even the longest club is well short;
-   part = the shortest club is still well long, so it's less than a full swing */
+   part = the shortest club is still well long, so it's less than a full swing.
+   When nothing reaches, it's simply your longest club, and "longest" goes by the distances you typed: a few logged drives
+   shouldn't hand the tee shot to a fairway wood whose own number is still a guess */
 function suggestClub(m, cd){
   if(!cd.length || !(m>0)) return null;
+  if(m-cd[0].d>15){ const big=cd.reduce((b,x)=>(x.typed||x.d)>(b.typed||b.d) ? x : b); return { club:big.club, d:big.d, leaves:m-big.d, part:false }; }
   const best=cd.reduce((b,x)=>Math.abs(x.d-m)<Math.abs(b.d-m) ? x : b);
-  return { club:best.club, d:best.d, leaves:(best===cd[0] && m-best.d>15) ? m-best.d : 0, part:best===cd[cd.length-1] && best.d-m>15 };
+  return { club:best.club, d:best.d, leaves:0, part:best===cd[cd.length-1] && best.d-m>15 };
 }
 /* the shortest club that still flies a hazard, with 5% in hand because a typical distance is a median */
 function carryClub(carry, cd){ const ok=cd.filter(x=>x.d>=carry*1.05); return ok.length ? ok[ok.length-1].club : null; }
@@ -1187,14 +1199,14 @@ document.addEventListener("visibilitychange", ()=>{ if(document.visibilityState=
 document.addEventListener("pointerdown", keepAwake);
 
 /* ---------- Wiring ---------- */
-$("prev").onclick=()=>goHole(st.hi-1);
-$("next").onclick=()=>goHole(st.hi+1);
+$("prev").onclick=()=>goHole(st.hi-1, true);
+$("next").onclick=()=>goHole(st.hi+1, true);
 $("holeBtn").onclick=()=>{
   if(!st.course) return;
   const g=$("holeGrid"); g.innerHTML="";
   st.course.holes.forEach((h,i)=>{ const b=document.createElement("button"); b.textContent=h.n; b.setAttribute("aria-current", String(i===st.hi));
     if(st.round && st.round.holes[h.n] && st.round.holes[h.n].done) b.className="done";
-    b.onclick=()=>{ hide("pickSheet"); goHole(i); }; g.appendChild(b); });
+    b.onclick=()=>{ hide("pickSheet"); goHole(i, true); }; g.appendChild(b); });
   show("pickSheet");
 };
 $("logBtn").onclick=openShot;

@@ -24,6 +24,9 @@ for (const h of course.holes) {
   lines.push(["club hole " + h.n, s.club + " " + s.d, "leaves " + Math.round(s.leaves), "part " + s.part, "carry [" + hz.join("; ") + "]"].join(" | "));
 }
 for (const m of [0, 30, 44, 46, 60, 67, 68, 110, 205, 235, 236]) { const s = suggestClub(m, bag); lines.push("suggest " + m + " | " + (s ? s.club + " leaves " + Math.round(s.leaves) + " part " + s.part : "none")); }
+// typed and logged numbers mixed: Driver typed 200 but logging 181, fairway wood still on its typed 190
+const mixed = [{ club: "15° Wood", d: 190, n: 0, typed: 190 }, { club: "Driver", d: 181, n: 3, typed: 200 }, { club: "7 Iron", d: 140, n: 0, typed: 140 }];
+for (const m of [329, 206, 205, 188, 183, 150]) { const s = suggestClub(m, mixed); lines.push("mixed " + m + " | " + s.club + " " + s.d + " leaves " + Math.round(s.leaves) + " part " + s.part); }
 lines.push("suggest 150 with empty bag | " + suggestClub(150, []) + " | carry 150 with empty bag | " + carryClub(150, []));
 out = lines.join("\\n") + "\\n";`;
 const box = { raw: fs.readFileSync(path.join(root, "course.json"), "utf8"), out: "" };
