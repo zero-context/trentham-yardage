@@ -1,0 +1,961 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#16241B">
+<title>Trentham Yardage</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@600;800&family=Saira:wght@400;500;600&display=swap">
+<style>
+/* Layout: a yardage-book page — big numbers column on the left, the hole drawn tee-to-green on the right, one-thumb action bar at the bottom */
+:root{
+  --paper:#F2F4EC; --card:#FFFFFF; --ink:#16241B; --ink-2:#56645A; --line:#D3DBCA;
+  --flag:#C8372A; --gps:#1F6FD1; --ok:#2E8B57; --warn:#B87C0E; --bad:#C8372A;
+  --rough:#DDE7D0; --fairway:#A9D292; --green:#5DBB8C; --tee:#93C47A; --sand:#EBD8A8; --water:#8EC3E0;
+  --f-num:"Big Shoulders Display","Arial Narrow","Roboto Condensed",system-ui,sans-serif;
+  --f-ui:"Saira",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  color-scheme:light;
+}
+@media (prefers-color-scheme:dark){:root{
+  --paper:#0E1611; --card:#17211B; --ink:#E7EEE5; --ink-2:#9DAB9F; --line:#2A382E;
+  --flag:#F0604E; --gps:#5AA2FF; --ok:#5CC48A; --warn:#E3B04B; --bad:#F0604E;
+  --rough:#1A2A1F; --fairway:#2F5A35; --green:#2F8C60; --tee:#3D6A36; --sand:#8F7E50; --water:#2B5D79;
+  color-scheme:dark;
+}}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+html,body{height:100%;margin:0}
+body{background:var(--paper);color:var(--ink);font:400 15px/1.4 var(--f-ui);-webkit-tap-highlight-color:transparent;overscroll-behavior:none}
+button{font:inherit;color:inherit;cursor:pointer}
+button:focus-visible,input:focus-visible,textarea:focus-visible{outline:3px solid var(--gps);outline-offset:2px}
+.num{font-family:var(--f-num);font-variant-numeric:tabular-nums;letter-spacing:.01em}
+.lab{font-size:11px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-2)}
+
+#app{height:100%;display:grid;grid-template-rows:auto minmax(0,1fr) auto}
+
+header{display:flex;align-items:center;gap:8px;padding:calc(env(safe-area-inset-top,0px) + 8px) 16px 8px}
+.nav{width:44px;height:44px;border-radius:10px;border:1.5px solid var(--line);background:var(--card);font-size:22px;line-height:1;flex:none}
+.nav:disabled{opacity:.35}
+.holeid{flex:1;min-width:0;background:none;border:0;padding:0 4px;text-align:left;display:flex;flex-direction:column}
+.holeid .num{font-size:30px;font-weight:800;line-height:1}
+.holeid .sub{font-size:13px;color:var(--ink-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.gps{flex:none;display:flex;align-items:center;gap:6px;font-size:12px;font-weight:600;padding:6px 10px;border-radius:999px;border:1.5px solid var(--line);background:var(--card);white-space:nowrap}
+.gps i{width:8px;height:8px;border-radius:50%;background:var(--ink-2)}
+.gps.ok i{background:var(--ok)} .gps.mid i{background:var(--warn)} .gps.bad i{background:var(--bad)}
+
+main{display:grid;grid-template-columns:minmax(0,1.12fr) minmax(0,1fr);gap:12px;padding-inline:16px;min-height:0}
+.left{display:flex;flex-direction:column;gap:12px;min-height:0;overflow-y:auto;padding-bottom:8px}
+.yard{display:grid;gap:2px}
+.yard .row{display:flex;align-items:baseline;justify-content:space-between;gap:8px}
+.yard .row .num{font-size:34px;font-weight:600;color:var(--ink-2);line-height:1}
+.yard .mid{display:flex;flex-direction:column;padding-block:2px 4px;border-block:1.5px solid var(--line)}
+.yard .mid .num{font-size:clamp(76px,25vw,132px);font-weight:800;line-height:.86}
+.yard .mid .lab{margin-top:2px}
+.note{font-size:13px;color:var(--ink-2)}
+.target{display:flex;align-items:center;gap:8px;font-size:14px;border:1.5px dashed var(--flag);border-radius:10px;padding:8px 10px}
+.target b{font-family:var(--f-num);font-size:22px;font-weight:800}
+.target button{margin-left:auto;border:0;background:none;color:var(--flag);font-weight:600;padding:4px}
+.haz h3{margin:0 0 4px}
+.haz ul{list-style:none;margin:0;padding:0;display:grid;gap:2px}
+.haz li{display:grid;grid-template-columns:12px minmax(0,1fr) 3.2em 3.2em;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid var(--line)}
+.haz li.head{border:0;padding:0}
+.haz li .sw{width:12px;height:12px;border-radius:3px}
+.haz li .nm{font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.haz li .num{font-size:22px;font-weight:600;text-align:right;line-height:1}
+.haz li.head span{text-align:right}
+
+.mapwrap{position:relative;min-height:0;border-radius:12px;overflow:hidden;background:var(--rough);border:1.5px solid var(--line)}
+#map{display:block;width:100%;height:100%;touch-action:manipulation}
+.maphint{position:absolute;left:8px;bottom:8px;right:8px;font-size:11px;color:var(--ink-2);pointer-events:none}
+
+.banner{border-radius:12px;padding:12px;background:var(--card);border:1.5px solid var(--line);display:grid;gap:8px}
+.banner p{margin:0}
+.banner .row{display:flex;gap:8px;flex-wrap:wrap}
+
+.bar{display:grid;grid-template-columns:1.6fr 1fr 1fr 52px;gap:8px;padding:10px 16px calc(env(safe-area-inset-bottom,0px) + 10px)}
+.btn{min-height:52px;border-radius:12px;border:1.5px solid var(--line);background:var(--card);color:var(--ink);font-weight:600;font-size:16px;padding:0 10px}
+.btn.primary{background:var(--ink);border-color:var(--ink);color:var(--paper)}
+.btn.small{min-height:44px;font-size:14px}
+.btn.danger{color:var(--flag)}
+
+.sheet{position:fixed;inset:0;z-index:20;display:flex;flex-direction:column;justify-content:flex-end}
+.scrim{position:absolute;inset:0;background:rgba(8,18,12,.5)}
+.panel{position:relative;background:var(--card);border-radius:18px 18px 0 0;padding:16px 16px calc(env(safe-area-inset-bottom,0px) + 16px);max-height:90%;overflow-y:auto;display:flex;flex-direction:column;gap:14px}
+@media (prefers-reduced-motion:no-preference){.panel{animation:up .18s ease-out}@keyframes up{from{transform:translateY(24px);opacity:.6}}}
+.panel h2{margin:0;font:800 28px/1 var(--f-num);letter-spacing:.01em}
+.panel .top{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.close{border:0;background:none;font-weight:600;color:var(--ink-2);padding:8px}
+.chips{display:flex;flex-wrap:wrap;gap:8px}
+.chip{min-height:42px;min-width:42px;padding:0 14px;border-radius:999px;border:1.5px solid var(--line);background:transparent;font-weight:500;font-size:15px}
+.chip[aria-pressed="true"]{background:var(--ink);border-color:var(--ink);color:var(--paper)}
+.clubs{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+.club{min-height:54px;border-radius:10px;border:1.5px solid var(--line);background:var(--paper);font-weight:600;font-size:17px}
+.club:active{background:var(--fairway)}
+.pair{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.stepper{display:flex;align-items:center;gap:14px}
+.stepper .num{font-size:56px;font-weight:800;min-width:1.6em;text-align:center;line-height:1}
+.stepper button{width:52px;height:52px;border-radius:50%;border:1.5px solid var(--line);background:var(--paper);font-size:26px}
+.holes{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:6px}
+.holes button{min-height:48px;border-radius:10px;border:1.5px solid var(--line);background:var(--paper);font:800 22px var(--f-num)}
+.holes button[aria-current="true"]{background:var(--ink);color:var(--paper);border-color:var(--ink)}
+.holes button.done{border-color:var(--green)}
+.scroll{overflow-x:auto}
+table{border-collapse:collapse;width:100%;font-variant-numeric:tabular-nums}
+th,td{padding:6px 6px;text-align:right;border-bottom:1px solid var(--line);white-space:nowrap}
+th:first-child,td:first-child{text-align:left}
+th{font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-2);font-weight:600}
+td.big{font:800 20px var(--f-num)}
+.stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}
+.stats div{display:flex;flex-direction:column}
+.stats .num{font-size:30px;font-weight:800;line-height:1}
+.set{display:grid;gap:8px}
+.set label{font-weight:600}
+textarea{width:100%;min-height:96px;border-radius:10px;border:1.5px solid var(--line);background:var(--paper);color:var(--ink);font:15px/1.4 var(--f-ui);padding:10px}
+.toggle{display:flex;align-items:center;gap:10px;min-height:44px}
+.toggle input{width:22px;height:22px;accent-color:var(--ink)}
+.muted{color:var(--ink-2);font-size:13px;margin:0}
+.toast{position:fixed;left:16px;right:16px;bottom:calc(env(safe-area-inset-bottom,0px) + 84px);z-index:30;background:var(--ink);color:var(--paper);border-radius:12px;padding:12px 14px;font-weight:500;box-shadow:0 6px 20px rgba(0,0,0,.25)}
+@media (max-width:360px){.yard .row .num{font-size:28px}.haz li .num{font-size:19px}}
+</style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <button class="nav" id="prev" aria-label="Previous hole">‹</button>
+    <button class="holeid" id="holeBtn" aria-label="Choose hole">
+      <span class="num" id="holeNum">Hole –</span>
+      <span class="sub" id="holeSub">Trentham Golf Club</span>
+    </button>
+    <button class="nav" id="next" aria-label="Next hole">›</button>
+    <div class="gps" id="gps" role="status"><i></i><span id="gpsTxt">Finding GPS…</span></div>
+  </header>
+
+  <main>
+    <section class="left" aria-label="Distances">
+      <div class="banner" id="banner" hidden></div>
+      <div class="yard" id="yard">
+        <div class="row"><span class="lab">Back</span><span class="num" id="nBack">–</span></div>
+        <div class="mid"><span class="num" id="nMid">–</span><span class="lab" id="midLab">to middle</span></div>
+        <div class="row"><span class="lab">Front</span><span class="num" id="nFront">–</span></div>
+      </div>
+      <p class="note" id="modeNote" hidden></p>
+      <div class="target" id="target" hidden></div>
+      <div class="haz" id="haz" hidden>
+        <ul id="hazList"></ul>
+      </div>
+    </section>
+    <div class="mapwrap">
+      <canvas id="map" aria-label="Hole drawing. Tap to measure to a spot."></canvas>
+      <div class="maphint" id="mapHint">Tap the hole to measure</div>
+    </div>
+  </main>
+
+  <nav class="bar">
+    <button class="btn primary" id="logBtn">Log shot</button>
+    <button class="btn" id="outBtn">Hole out</button>
+    <button class="btn" id="cardBtn">Card</button>
+    <button class="btn" id="setBtn" aria-label="Settings">•••</button>
+  </nav>
+</div>
+
+<!-- Log shot -->
+<div class="sheet" id="shotSheet" hidden role="dialog" aria-modal="true" aria-labelledby="shotTitle">
+  <div class="scrim" data-close></div>
+  <div class="panel">
+    <div class="top"><h2 id="shotTitle">Shot</h2><button class="close" data-close>Close</button></div>
+    <div class="set"><span class="lab">Lie</span><div class="chips" id="lieChips"></div></div>
+    <div class="set"><span class="lab">Club — tap to log</span><div class="clubs" id="clubGrid"></div></div>
+    <div class="pair">
+      <button class="btn small" id="penBtn">Penalty on last shot</button>
+      <button class="btn small danger" id="undoBtn">Undo last shot</button>
+    </div>
+  </div>
+</div>
+
+<!-- Hole out -->
+<div class="sheet" id="outSheet" hidden role="dialog" aria-modal="true" aria-labelledby="outTitle">
+  <div class="scrim" data-close></div>
+  <div class="panel">
+    <div class="top"><h2 id="outTitle">Hole out</h2><button class="close" data-close>Close</button></div>
+    <div class="set"><span class="lab">Par</span><div class="chips" id="parChips"></div></div>
+    <div class="set"><span class="lab">Putts</span><div class="chips" id="puttChips"></div></div>
+    <div class="set"><span class="lab">Score</span>
+      <div class="stepper"><button id="scMinus" aria-label="One less">−</button><span class="num" id="scVal">–</span><button id="scPlus" aria-label="One more">+</button></div>
+      <p class="muted" id="scNote"></p>
+    </div>
+    <button class="btn primary" id="saveHole">Save hole</button>
+  </div>
+</div>
+
+<!-- Hole picker -->
+<div class="sheet" id="pickSheet" hidden role="dialog" aria-modal="true" aria-labelledby="pickTitle">
+  <div class="scrim" data-close></div>
+  <div class="panel">
+    <div class="top"><h2 id="pickTitle">Go to hole</h2><button class="close" data-close>Close</button></div>
+    <div class="holes" id="holeGrid"></div>
+  </div>
+</div>
+
+<!-- Card -->
+<div class="sheet" id="cardSheet" hidden role="dialog" aria-modal="true" aria-labelledby="cardTitle">
+  <div class="scrim" data-close></div>
+  <div class="panel">
+    <div class="top"><h2 id="cardTitle">Scorecard</h2><button class="close" data-close>Close</button></div>
+    <div id="cardBody"></div>
+  </div>
+</div>
+
+<!-- Settings -->
+<div class="sheet" id="setSheet" hidden role="dialog" aria-modal="true" aria-labelledby="setTitle">
+  <div class="scrim" data-close></div>
+  <div class="panel">
+    <div class="top"><h2 id="setTitle">Settings</h2><button class="close" data-close>Close</button></div>
+    <div class="set"><span class="lab">Units</span><div class="chips" id="unitChips"></div></div>
+    <label class="toggle"><input type="checkbox" id="autoAdv"> Move to the next hole when I reach its tee</label>
+    <div class="set"><label for="clubsTxt">Clubs in your bag</label>
+      <textarea id="clubsTxt"></textarea>
+      <p class="muted">One per line or comma separated, in the order you want the buttons.</p>
+    </div>
+    <div class="set"><span class="lab">Course data</span>
+      <p class="muted" id="courseInfo"></p>
+      <div class="pair">
+        <button class="btn small" id="refreshBtn">Reload from OpenStreetMap</button>
+        <button class="btn small" id="importBtn">Import a file</button>
+      </div>
+      <input type="file" id="importFile" accept=".json,.geojson,application/json" hidden>
+    </div>
+    <div class="set"><span class="lab">Your rounds</span>
+      <p class="muted" id="roundInfo"></p>
+      <button class="btn small" id="exportBtn">Export rounds for analysis</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast" hidden role="status"></div>
+
+<script>
+"use strict";
+/* ---------- Course config ---------- */
+const COURSE = {
+  name: "Trentham Golf Club",
+  match: /trentham/i,
+  bbox: [-37.41, 144.28, -37.355, 144.36] // S, W, N, E — generous box around Trentham, VIC
+};
+const OVERPASS = [
+  "https://overpass-api.de/api/interpreter",
+  "https://overpass.kumi.systems/api/interpreter",
+  "https://overpass.private.coffee/api/interpreter"
+];
+const DEFAULT_CLUBS = ["Driver","3 Wood","5 Wood","Hybrid","4 Iron","5 Iron","6 Iron","7 Iron","8 Iron","9 Iron","PW","GW","SW","LW"];
+const LIES = ["Tee","Fairway","Rough","Bunker","Recovery","Green"];
+const YD = 1.09361;
+
+/*GEO-START*/
+const R_LAT = 110540, R_LON = 111320;
+function makeProj(c){ const k = Math.cos(c[0]*Math.PI/180); return ll => [(ll[1]-c[1])*R_LON*k, (ll[0]-c[0])*R_LAT]; }
+function unproj(c){ const k = Math.cos(c[0]*Math.PI/180); return p => [c[0] + p[1]/R_LAT, c[1] + p[0]/(R_LON*k)]; }
+const sub = (a,b) => [a[0]-b[0], a[1]-b[1]];
+const dist = (a,b) => Math.hypot(a[0]-b[0], a[1]-b[1]);
+const cross = (a,b) => a[0]*b[1] - a[1]*b[0];
+const same = (a,b) => Math.abs(a[0]-b[0])<1e-9 && Math.abs(a[1]-b[1])<1e-9;
+function centroid(p){
+  let a=0,x=0,y=0;
+  for(let i=0,j=p.length-1;i<p.length;j=i++){ const f=p[j][0]*p[i][1]-p[i][0]*p[j][1]; a+=f; x+=(p[j][0]+p[i][0])*f; y+=(p[j][1]+p[i][1])*f; }
+  if(Math.abs(a)<1e-9){ let sx=0,sy=0; p.forEach(q=>{sx+=q[0];sy+=q[1];}); return [sx/p.length, sy/p.length]; }
+  a*=3; return [x/a, y/a];
+}
+function inPoly(pt,p){
+  let c=false;
+  for(let i=0,j=p.length-1;i<p.length;j=i++){ const a=p[i],b=p[j];
+    if((a[1]>pt[1])!==(b[1]>pt[1]) && pt[0] < (b[0]-a[0])*(pt[1]-a[1])/(b[1]-a[1]) + a[0]) c=!c; }
+  return c;
+}
+function segClosest(pt,a,b){
+  const ab=sub(b,a), l2=ab[0]*ab[0]+ab[1]*ab[1];
+  let t = l2 ? ((pt[0]-a[0])*ab[0] + (pt[1]-a[1])*ab[1]) / l2 : 0;
+  t = Math.max(0, Math.min(1, t));
+  return { q:[a[0]+ab[0]*t, a[1]+ab[1]*t], t };
+}
+function distPath(pt,path){
+  if(path.length===1) return dist(pt,path[0]);
+  let m=Infinity; for(let i=1;i<path.length;i++) m=Math.min(m, dist(pt, segClosest(pt,path[i-1],path[i]).q)); return m;
+}
+function distPoly(pt,p){ return inPoly(pt,p) ? 0 : distPath(pt, p.concat([p[0]])); }
+function pathLen(path){ let s=0; for(let i=1;i<path.length;i++) s+=dist(path[i-1],path[i]); return s; }
+/* closest point on a path: how far along it is, how far off it is, and which side (1 = left looking tee→green) */
+function pathInfo(pt,path){
+  let best={d:Infinity,prog:0,side:0}, acc=0;
+  for(let i=1;i<path.length;i++){
+    const a=path[i-1], b=path[i], L=dist(a,b), r=segClosest(pt,a,b), d=dist(pt,r.q);
+    if(d<best.d) best={ d, prog:acc+L*r.t, side:Math.sign(cross(sub(b,a), sub(pt,r.q))) };
+    acc+=L;
+  }
+  return best;
+}
+/* distances along the ray P→C where it crosses the polygon's edges */
+function rayHits(P,C,poly){
+  const d=sub(C,P), L=Math.hypot(d[0],d[1]); if(!L) return [];
+  const u=[d[0]/L,d[1]/L], hits=[];
+  for(let i=0,j=poly.length-1;i<poly.length;j=i++){
+    const a=poly[j], b=poly[i], e=sub(b,a), den=cross(u,e); if(Math.abs(den)<1e-12) continue;
+    const w=sub(a,P), t=cross(w,e)/den, s=cross(w,u)/den;
+    if(s>=0 && s<=1 && t>0) hits.push(t);
+  }
+  return hits.sort((x,y)=>x-y);
+}
+/* front / middle / back of the green, measured along the player's own line to the middle */
+function greenNums(P,h){
+  if(!h.green){ return { mid:dist(P,h.path[h.path.length-1]), front:null, back:null }; }
+  const mid=dist(P,h.gc);
+  if(inPoly(P,h.green)) return { mid, front:null, back:null, on:true };
+  const hits=rayHits(P,h.gc,h.green);
+  if(hits.length>=2) return { mid, front:hits[0], back:hits[hits.length-1] };
+  let lo=Infinity, hi=0; h.green.forEach(v=>{ const dd=dist(P,v); lo=Math.min(lo,dd); hi=Math.max(hi,dd); });
+  return { mid, front:lo, back:hi };
+}
+/* bunkers and water still in play from P: distance to reach and to carry */
+function hazardsAhead(P,h,prog,mid){
+  const out=[];
+  const add=(poly,c,kind)=>{
+    if(inPoly(P,poly)) return;
+    const pi=pathInfo(c,h.path);
+    if(pi.prog < prog+3) return;
+    const reach=distPoly(P,poly);
+    if(reach > mid+25) return;
+    let carry=null;
+    if(kind==="Bunker"){ carry=0; poly.forEach(v=>{ carry=Math.max(carry, dist(P,v)); }); }
+    else { const hits=rayHits(P,h.gc,poly); if(hits.length>=2) carry=hits[hits.length-1]; }
+    const greenside = h.green && distPoly(c,h.green) < 12;
+    const side = pi.d < 6 ? "centre" : (pi.side>0 ? "left" : "right");
+    out.push({ kind, label:(greenside?"Greenside ":"")+kind.toLowerCase()+", "+side, reach, carry, poly });
+  };
+  h.bunkers.forEach(b=>add(b.p,b.c,"Bunker"));
+  h.water.forEach(w=>add(w.p,w.c,"Water"));
+  return out.sort((a,b)=>a.reach-b.reach).slice(0,6);
+}
+/* ---------- OSM data → course ---------- */
+function joinSegs(segs){
+  const rings=[], pool=segs.map(s=>s.slice());
+  while(pool.length){
+    let r=pool.shift(), grew=true;
+    while(grew && !(r.length>3 && same(r[0],r[r.length-1]))){
+      grew=false;
+      for(let i=0;i<pool.length;i++){
+        const s=pool[i], end=r[r.length-1];
+        if(same(end,s[0])) r=r.concat(s.slice(1));
+        else if(same(end,s[s.length-1])) r=r.concat(s.slice(0,-1).reverse());
+        else if(same(r[0],s[s.length-1])) r=s.slice(0,-1).concat(r);
+        else if(same(r[0],s[0])) r=s.slice(1).reverse().concat(r);
+        else continue;
+        pool.splice(i,1); grew=true; break;
+      }
+    }
+    rings.push(r);
+  }
+  return rings;
+}
+const isClosed = pts => pts.length>3 && same(pts[0], pts[pts.length-1]);
+function normOverpass(json){
+  const els=[];
+  for(const e of (json.elements||[])){
+    const tags=e.tags||{};
+    if(e.type==="way" && e.geometry){
+      const pts=e.geometry.filter(Boolean).map(g=>[g.lat,g.lon]); if(pts.length<2) continue;
+      els.push({ tags, pts, closed:isClosed(pts) });
+    } else if(e.type==="relation" && e.members){
+      const segs=e.members.filter(m=>m.type==="way" && m.geometry && (!m.role || m.role==="outer")).map(m=>m.geometry.filter(Boolean).map(g=>[g.lat,g.lon]));
+      joinSegs(segs).forEach(pts=>els.push({ tags, pts, closed:isClosed(pts) }));
+    }
+  }
+  return els;
+}
+function normGeoJSON(fc){
+  const els=[];
+  for(const f of (fc.features||[])){
+    const g=f.geometry; if(!g) continue;
+    const pr=f.properties||{};
+    const tags = (pr.tags && typeof pr.tags==="object") ? pr.tags : Object.fromEntries(Object.entries(pr).filter(([k])=>!k.startsWith("@") && k!=="id"));
+    const ring = cs => cs.map(c=>[c[1],c[0]]);
+    if(g.type==="Polygon") els.push({ tags, pts:ring(g.coordinates[0]), closed:true });
+    else if(g.type==="MultiPolygon") g.coordinates.forEach(pl=>els.push({ tags, pts:ring(pl[0]), closed:true }));
+    else if(g.type==="LineString"){ const pts=ring(g.coordinates); els.push({ tags, pts, closed:isClosed(pts) }); }
+    else if(g.type==="MultiLineString") g.coordinates.forEach(l=>{ const pts=ring(l); els.push({ tags, pts, closed:isClosed(pts) }); });
+  }
+  return els;
+}
+const meanLL = pts => { let a=0,b=0; pts.forEach(p=>{a+=p[0];b+=p[1];}); return [a/pts.length, b/pts.length]; };
+function processCourse(els, nameMatch){
+  const polys=els.filter(e=>e.closed);
+  const holeEls=els.filter(e=>e.tags.golf==="hole" && !e.closed);
+  if(!holeEls.length) throw new Error("The map data has no holes in it.");
+  const courses=polys.filter(e=>e.tags.leisure==="golf_course");
+  let cp=courses.find(e=>nameMatch && nameMatch.test(e.tags.name||"")) || null;
+  if(!cp && courses.length){
+    const tp=makeProj(meanLL(holeEls.flatMap(e=>e.pts)));
+    const ranked=courses.map(c=>{ const pp=c.pts.map(tp); return { c, n:holeEls.filter(h=>inPoly(tp(h.pts[0]),pp)).length }; }).sort((a,b)=>b.n-a.n);
+    if(ranked[0].n>0) cp=ranked[0].c;
+  }
+  const center=meanLL(cp ? cp.pts : holeEls.flatMap(e=>e.pts));
+  const pj=makeProj(center);
+  const cpoly=cp ? cp.pts.map(pj) : null;
+  const inside=pt => !cpoly || inPoly(pt,cpoly) || distPoly(pt,cpoly) < 60;
+  const P=e=>({ tags:e.tags, p:e.pts.map(pj) });
+  const pick=test=>polys.filter(test).map(P).filter(o=>inside(centroid(o.p)));
+  const greens=pick(e=>e.tags.golf==="green");
+  const tees=pick(e=>e.tags.golf==="tee");
+  const fairways=pick(e=>e.tags.golf==="fairway");
+  const bunkers=pick(e=>e.tags.golf==="bunker" || e.tags.natural==="sand");
+  const water=polys.filter(e=>e.tags.natural==="water" || e.tags.water || e.tags.golf==="water_hazard" || e.tags.golf==="lateral_water_hazard").map(P);
+
+  const byRef=new Map();
+  holeEls.map(P).forEach(o=>{
+    const n=parseInt(o.tags.ref,10); if(!(n>=1 && n<=36)) return;
+    if(!inside(o.p[0]) && !inside(o.p[o.p.length-1])) return;
+    const prev=byRef.get(n); if(!prev || pathLen(o.p)>pathLen(prev.p)) byRef.set(n,o);
+  });
+  const nearestGreen=pt=>{ let b=null, bd=Infinity; greens.forEach(g=>{ const d=distPoly(pt,g.p); if(d<bd){bd=d;b=g;} }); return { b, bd }; };
+  const holes=[...byRef.entries()].sort((a,b)=>a[0]-b[0]).map(([n,o])=>{
+    let path=o.p.slice();
+    if(greens.length){ const s=nearestGreen(path[0]), e=nearestGreen(path[path.length-1]); if(s.bd+5 < e.bd) path.reverse(); }
+    const ng=nearestGreen(path[path.length-1]);
+    const green=(ng.b && ng.bd<40) ? ng.b.p : null;
+    const gc=green ? centroid(green) : path[path.length-1];
+    const teeList=tees.filter(t=>distPoly(path[0],t.p)<35).sort((a,b)=>distPoly(path[0],a.p)-distPoly(path[0],b.p));
+    return { n, par:parseInt(o.tags.par,10)||null, path, green, gc, tees:teeList.map(t=>t.p),
+      teePt: teeList.length ? centroid(teeList[0].p) : path[0], bunkers:[], fairways:[], water:[], len:pathLen(path) };
+  });
+  bunkers.forEach(b=>{
+    const c=centroid(b.p); let best=null, bd=Infinity;
+    holes.forEach(h=>{ const d=Math.min(distPath(c,h.path), h.green?distPoly(c,h.green):Infinity); if(d<bd){bd=d;best=h;} });
+    if(best && bd<45) best.bunkers.push({ p:b.p, c });
+  });
+  fairways.forEach(f=>{
+    const c=centroid(f.p); let best=null, bd=Infinity;
+    holes.forEach(h=>{ const d=distPath(c,h.path); if(d<bd){bd=d;best=h;} });
+    if(best && bd<60) best.fairways.push(f.p);
+  });
+  water.forEach(w=>{
+    const c=centroid(w.p);
+    holes.forEach(h=>{
+      let d=Infinity;
+      h.path.forEach(v=>{ d=Math.min(d, distPoly(v,w.p)); });
+      w.p.forEach((v,i)=>{ if(i%2===0) d=Math.min(d, distPath(v,h.path)); });
+      if(h.green) d=Math.min(d, distPoly(h.gc,w.p));
+      if(d<60) h.water.push({ p:w.p, c });
+    });
+  });
+  return { name:(cp && cp.tags.name) || "Golf course", center, holes,
+    greens:greens.map(g=>g.p), tees:tees.map(t=>t.p), fairways:fairways.map(f=>f.p), bunkers:bunkers.map(b=>b.p),
+    counts:{ holes:holes.length, greens:greens.length, bunkers:bunkers.length, water:holes.reduce((s,h)=>s+h.water.length,0) } };
+}
+/*GEO-END*/
+
+/* ---------- State ---------- */
+const $ = id => document.getElementById(id);
+const LS = {
+  get(k,d){ try{ const v=localStorage.getItem(k); return v==null ? d : JSON.parse(v); }catch(e){ return d; } },
+  set(k,v){ try{ localStorage.setItem(k, JSON.stringify(v)); return true; }catch(e){ return false; } }
+};
+const st = {
+  settings: Object.assign({ units:"m", auto:true, clubs:DEFAULT_CLUBS, par:{} }, LS.get("ty.settings",{})),
+  raw: LS.get("ty.raw",null), course:null, pj:null, ll:null,
+  hi: LS.get("ty.hole",0), fixes:[], gps:"wait", target:null,
+  round: LS.get("ty.round",null), history: LS.get("ty.history",[]),
+  lie:"Tee", out:null, loading:false, view:null
+};
+const saveSettings = () => LS.set("ty.settings", st.settings);
+const saveRound = () => LS.set("ty.round", st.round);
+const unit = () => st.settings.units==="yd" ? "yd" : "m";
+const fmt = m => (m==null || !isFinite(m)) ? "–" : String(Math.round(st.settings.units==="yd" ? m*YD : m));
+const curHole = () => st.course ? st.course.holes[st.hi] : null;
+const parOf = h => st.settings.par[h.n] || h.par || null;
+
+/* ---------- GPS ---------- */
+function startGPS(){
+  if(!("geolocation" in navigator)){ st.gps="none"; renderStatus(); return; }
+  navigator.geolocation.watchPosition(p=>{
+    const now=Date.now();
+    st.fixes.push({ t:now, lat:p.coords.latitude, lon:p.coords.longitude, acc:p.coords.accuracy });
+    st.fixes=st.fixes.filter(f=>now-f.t<10000).slice(-15);
+    st.gps="on"; onPosition();
+  }, e=>{ st.gps = e.code===1 ? "denied" : "wait"; renderStatus(); render(); },
+  { enableHighAccuracy:true, maximumAge:1000, timeout:30000 });
+}
+/* average the last few seconds of fixes, weighted toward the most accurate ones */
+function smoothed(){
+  const now=Date.now();
+  let fs=st.fixes.filter(f=>now-f.t<6000); if(!fs.length) fs=st.fixes.slice(-1); if(!fs.length) return null;
+  const best=Math.min(...fs.map(f=>f.acc));
+  fs=fs.filter(f=>f.acc<=Math.max(best*2,10));
+  let w=0,la=0,lo=0; fs.forEach(f=>{ const k=1/Math.pow(Math.max(f.acc,3),2); w+=k; la+=f.lat*k; lo+=f.lon*k; });
+  return { lat:la/w, lon:lo/w, acc:fs[fs.length-1].acc, age:now-fs[fs.length-1].t };
+}
+function player(){
+  const h=curHole(), s=smoothed();
+  if(st.course && s){ const xy=st.pj([s.lat,s.lon]); if(Math.hypot(xy[0],xy[1])<3000) return { xy, live:true, acc:s.acc, s }; }
+  return { xy: h ? h.teePt : [0,0], live:false };
+}
+function onPosition(){
+  const P=player(), h=curHole();
+  if(st.settings.auto && P.live && h && st.hi < st.course.holes.length-1){
+    const nx=st.course.holes[st.hi+1];
+    const atNextTee = nx.tees.some(t=>distPoly(P.xy,t)<8) || dist(P.xy,nx.teePt)<12;
+    if(atNextTee && dist(P.xy,h.gc)>25){ goHole(st.hi+1); toast("On the "+ordinal(nx.n)+" tee"); return; }
+  }
+  render();
+}
+const ordinal = n => n + (["th","st","nd","rd"][((n%100-20)%10)] || ["th","st","nd","rd"][n%100] || "th");
+
+/* ---------- Course loading ---------- */
+function buildCourse(){
+  try{
+    st.course=processCourse(st.raw.els, COURSE.match);
+    st.pj=makeProj(st.course.center); st.ll=unproj(st.course.center);
+    if(!(st.hi>=0 && st.hi<st.course.holes.length)) st.hi=0;
+    showBanner(null);
+  }catch(e){ st.course=null; showBanner("error", e.message); }
+  render();
+}
+function setRaw(els, source){
+  st.raw={ els, source, at:Date.now() };
+  if(!LS.set("ty.raw", st.raw)) toast("Course loaded, but your phone couldn't save it for offline use.");
+  buildCourse();
+}
+async function fetchCourse(){
+  if(st.loading) return; st.loading=true; showBanner("loading");
+  const [S,W,N,E]=COURSE.bbox, bb=`(${S},${W},${N},${E})`;
+  const q=`[out:json][timeout:60];(way["leisure"="golf_course"]${bb};relation["leisure"="golf_course"]${bb};way["golf"]${bb};relation["golf"]${bb};way["natural"~"^(water|sand)$"]${bb};relation["natural"="water"]${bb};);out geom;`;
+  let lastErr=null;
+  for(const url of OVERPASS){
+    try{
+      const ctl=new AbortController(), tm=setTimeout(()=>ctl.abort(), 45000);
+      const r=await fetch(url, { method:"POST", body:new URLSearchParams({ data:q }), signal:ctl.signal });
+      clearTimeout(tm);
+      if(!r.ok) throw new Error("server busy ("+r.status+")");
+      const j=await r.json();
+      const els=normOverpass(j);
+      processCourse(els, COURSE.match);
+      st.loading=false; setRaw(els, "OpenStreetMap"); toast("Trentham course data saved on this phone"); return;
+    }catch(e){ lastErr=e; }
+  }
+  st.loading=false;
+  showBanner("error", "The map servers didn't answer ("+(lastErr && lastErr.name==="AbortError" ? "timed out" : (lastErr?lastErr.message:"no reply"))+").");
+}
+/* the copy of the course that ships with the app, so the first load doesn't need a map server */
+async function loadBundled(){
+  try{
+    const r=await fetch("course.json");
+    if(!r.ok) throw new Error("course.json answered "+r.status);
+    const els=normOverpass(await r.json());
+    processCourse(els, COURSE.match);
+    setRaw(els, "the copy saved with the app");
+  }catch(e){ console.warn("Bundled course didn't load, trying OpenStreetMap:", e); fetchCourse(); }
+}
+function importFile(file){
+  const rd=new FileReader();
+  rd.onload=()=>{
+    try{
+      const j=JSON.parse(rd.result);
+      const els = j.elements ? normOverpass(j) : (j.type==="FeatureCollection" ? normGeoJSON(j) : null);
+      if(!els) throw new Error("That file isn't Overpass JSON or GeoJSON.");
+      processCourse(els, COURSE.match);
+      setRaw(els, "imported file"); hide("setSheet"); toast("Course imported");
+    }catch(e){ toast("Couldn't use that file: "+e.message); }
+  };
+  rd.readAsText(file);
+}
+function showBanner(kind, msg){
+  const b=$("banner");
+  if(!kind){ b.hidden=true; $("yard").hidden=false; return; }
+  b.hidden=false; $("yard").hidden = !st.course;
+  if(kind==="loading"){ b.innerHTML='<p><b>Loading Trentham from OpenStreetMap…</b></p><p class="muted">First time only. Once it\'s saved, the app works with no signal.</p>'; return; }
+  b.innerHTML='<p><b>Course data didn\'t load.</b></p><p class="muted"></p><div class="row"><button class="btn small" id="bRetry">Try again</button><button class="btn small" id="bImport">Import a file</button></div>';
+  b.querySelector(".muted").textContent = (msg||"") + " Try again in a minute, or import an export from overpass-turbo.";
+  $("bRetry").onclick=fetchCourse; $("bImport").onclick=()=>$("importFile").click();
+}
+
+/* ---------- Rendering ---------- */
+function render(){
+  renderStatus(); renderHeader();
+  const h=curHole();
+  if(!h){ ["nBack","nMid","nFront"].forEach(id=>$(id).textContent="–"); $("haz").hidden=true; $("target").hidden=true; $("modeNote").hidden=true; drawMap(); return; }
+  const P=player(), g=greenNums(P.xy,h);
+  $("nMid").textContent = fmt(g.mid);
+  $("nFront").textContent = fmt(g.front);
+  $("nBack").textContent = fmt(g.back);
+  $("midLab").textContent = (g.on ? "on the green · to middle" : "to middle") + " · " + unit();
+  const note=$("modeNote");
+  if(!P.live){
+    note.hidden=false;
+    note.textContent = st.gps==="denied" ? "Location is blocked for this page. Allow it in Chrome's site settings to get live distances. Showing distances from the tee."
+      : (st.fixes.length ? "You're away from the course, so distances are from the tee." : "Waiting for GPS. Showing distances from the tee.");
+  } else {
+    note.hidden = !(P.acc>20);
+    note.textContent = P.acc>20 ? "GPS is rough right now (±"+Math.round(P.acc)+" m). Give it a few seconds in the open." : "";
+  }
+  const prog = P.live ? pathInfo(P.xy,h.path).prog : 0;
+  const hz=hazardsAhead(P.xy,h,prog,g.mid);
+  const list=$("hazList");
+  if(hz.length){
+    $("haz").hidden=false;
+    list.innerHTML='<li class="head"><span></span><span class="lab" style="text-align:left">Hazards ahead</span><span class="lab">Reach</span><span class="lab">Carry</span></li>';
+    hz.forEach(z=>{
+      const li=document.createElement("li");
+      li.innerHTML='<span class="sw"></span><span class="nm"></span><span class="num"></span><span class="num"></span>';
+      li.children[0].style.background = z.kind==="Water" ? "var(--water)" : "var(--sand)";
+      li.children[1].textContent = z.label.charAt(0).toUpperCase()+z.label.slice(1);
+      li.children[2].textContent = fmt(z.reach);
+      li.children[3].textContent = z.carry==null ? "–" : fmt(z.carry);
+      list.appendChild(li);
+    });
+  } else $("haz").hidden=true;
+  const t=$("target");
+  if(st.target){
+    t.hidden=false;
+    t.innerHTML='<span>Target</span><b></b><span></span><button id="tClear">Clear</button>';
+    t.children[1].textContent = fmt(dist(P.xy,st.target));
+    t.children[2].textContent = "then " + fmt(dist(st.target,h.gc)) + " to middle";
+    $("tClear").onclick=()=>{ st.target=null; render(); };
+  } else t.hidden=true;
+  drawMap();
+}
+function renderHeader(){
+  const h=curHole();
+  $("prev").disabled = !st.course || st.hi<=0;
+  $("next").disabled = !st.course || st.hi>=st.course.holes.length-1;
+  if(!h){ $("holeNum").textContent="Trentham"; $("holeSub").textContent = st.loading ? "Loading course…" : "Golf Club"; return; }
+  $("holeNum").textContent = "Hole " + h.n;
+  const par=parOf(h), rec=st.round && st.round.holes[h.n];
+  let sub = (par ? "Par "+par+" · " : "") + fmt(h.len) + " " + unit();
+  if(rec && rec.done) sub += " · scored " + rec.score;
+  else if(rec && rec.shots.length) sub += " · " + rec.shots.length + (rec.shots.length===1?" shot":" shots");
+  $("holeSub").textContent = sub;
+}
+function renderStatus(){
+  const el=$("gps"), P=player(); let txt, cls="";
+  if(st.gps==="denied"){ txt="Location off"; cls="bad"; }
+  else if(st.gps==="none"){ txt="No GPS"; cls="bad"; }
+  else if(!st.fixes.length){ txt="Finding GPS…"; }
+  else if(!P.live){ txt="Off course"; cls="mid"; }
+  else { const a=Math.round(P.acc); txt="GPS ±"+a+" m"; cls = a<=8 ? "ok" : (a<=20 ? "mid" : "bad"); }
+  el.className="gps "+cls; $("gpsTxt").textContent=txt;
+}
+function holeView(h,w,H,P){
+  const v=sub(h.gc,h.teePt), hd=Math.atan2(v[0],v[1]), c=Math.cos(hd), s=Math.sin(hd);
+  const rot=p=>[p[0]*c-p[1]*s, p[0]*s+p[1]*c];
+  const pts=[...h.path, ...(h.green||[]), ...h.tees.flat(), ...h.fairways.flat(), ...h.bunkers.flatMap(b=>b.p), h.teePt].map(rot);
+  if(P.live && distPath(P.xy,h.path)<350) pts.push(rot(P.xy));
+  let x0=Infinity,x1=-Infinity,y0=Infinity,y1=-Infinity;
+  pts.forEach(p=>{ x0=Math.min(x0,p[0]); x1=Math.max(x1,p[0]); y0=Math.min(y0,p[1]); y1=Math.max(y1,p[1]); });
+  const pad=26, sc=Math.min((w-2*pad)/Math.max(x1-x0,40), (H-2*pad)/Math.max(y1-y0,40));
+  const mx=(x0+x1)/2, my=(y0+y1)/2;
+  return {
+    sc,
+    toS: p=>{ const r=rot(p); return [w/2+(r[0]-mx)*sc, H/2-(r[1]-my)*sc]; },
+    fromS: (sx,sy)=>{ const rx=(sx-w/2)/sc+mx, ry=-(sy-H/2)/sc+my; return [rx*c+ry*s, -rx*s+ry*c]; }
+  };
+}
+function drawMap(){
+  const cv=$("map"), box=cv.parentElement, dpr=window.devicePixelRatio||1, w=box.clientWidth, H=box.clientHeight;
+  if(!w || !H) return;
+  cv.width=Math.round(w*dpr); cv.height=Math.round(H*dpr);
+  const ctx=cv.getContext("2d"); ctx.setTransform(dpr,0,0,dpr,0,0);
+  const css=getComputedStyle(document.documentElement), col=n=>css.getPropertyValue(n).trim();
+  ctx.fillStyle=col("--rough"); ctx.fillRect(0,0,w,H);
+  const h=curHole(); if(!h){ st.view=null; return; }
+  const P=player(), V=holeView(h,w,H,P); st.view=V;
+  const shape=(p,fill)=>{ ctx.beginPath(); p.forEach((q,i)=>{ const s=V.toS(q); i?ctx.lineTo(s[0],s[1]):ctx.moveTo(s[0],s[1]); }); ctx.closePath(); ctx.fillStyle=fill; ctx.fill(); };
+  h.water.forEach(x=>shape(x.p,col("--water")));
+  h.fairways.forEach(p=>shape(p,col("--fairway")));
+  h.tees.forEach(p=>shape(p,col("--tee")));
+  h.bunkers.forEach(b=>shape(b.p,col("--sand")));
+  if(h.green) shape(h.green,col("--green"));
+
+  const O=V.toS(P.xy), G=V.toS(h.gc), ang=Math.atan2(G[1]-O[1], G[0]-O[0]);
+  const gMid=dist(P.xy,h.gc), stepM = st.settings.units==="yd" ? 50/YD : 50;
+  ctx.font='600 12px '+col("--f-ui"); ctx.textAlign="center"; ctx.textBaseline="middle";
+  ctx.strokeStyle=col("--ink-2"); ctx.fillStyle=col("--ink-2"); ctx.setLineDash([3,4]); ctx.lineWidth=1;
+  for(let k=1; k*stepM < gMid-12; k++){
+    const R=k*stepM*V.sc; ctx.globalAlpha=.55;
+    ctx.beginPath(); ctx.arc(O[0],O[1],R,ang-.42,ang+.42); ctx.stroke(); ctx.globalAlpha=1;
+    const lx=O[0]+Math.cos(ang+.5)*R, ly=O[1]+Math.sin(ang+.5)*R;
+    if(lx>8 && lx<w-8 && ly>8 && ly<H-8) ctx.fillText(String(k*50), lx, ly);
+  }
+  ctx.globalAlpha=.6; ctx.setLineDash([2,5]); ctx.beginPath();
+  h.path.forEach((q,i)=>{ const s=V.toS(q); i?ctx.lineTo(s[0],s[1]):ctx.moveTo(s[0],s[1]); }); ctx.stroke();
+  ctx.globalAlpha=1; ctx.setLineDash([]);
+
+  const rec=st.round && st.round.holes[h.n];
+  if(rec){
+    const sp=rec.shots.filter(s=>s.lat!=null).map(s=>V.toS(st.pj([s.lat,s.lon])));
+    ctx.strokeStyle=col("--ink"); ctx.lineWidth=1.5; ctx.beginPath(); sp.forEach((s,i)=>i?ctx.lineTo(s[0],s[1]):ctx.moveTo(s[0],s[1])); ctx.stroke();
+    sp.forEach((s,i)=>{ ctx.fillStyle=col("--ink"); ctx.beginPath(); ctx.arc(s[0],s[1],8,0,7); ctx.fill(); ctx.fillStyle=col("--paper"); ctx.font='800 12px '+col("--f-num"); ctx.fillText(String(i+1), s[0], s[1]+.5); });
+  }
+  // flag
+  ctx.strokeStyle=col("--ink"); ctx.lineWidth=2; ctx.beginPath(); ctx.moveTo(G[0],G[1]); ctx.lineTo(G[0],G[1]-20); ctx.stroke();
+  ctx.fillStyle=col("--flag"); ctx.beginPath(); ctx.moveTo(G[0],G[1]-20); ctx.lineTo(G[0]+12,G[1]-15); ctx.lineTo(G[0],G[1]-10); ctx.closePath(); ctx.fill();
+
+  if(st.target){
+    const T=V.toS(st.target);
+    ctx.strokeStyle=col("--flag"); ctx.lineWidth=2; ctx.setLineDash([6,4]);
+    ctx.beginPath(); ctx.moveTo(O[0],O[1]); ctx.lineTo(T[0],T[1]); ctx.lineTo(G[0],G[1]); ctx.stroke(); ctx.setLineDash([]);
+    ctx.beginPath(); ctx.arc(T[0],T[1],9,0,7); ctx.stroke();
+    const tag=(x,y,text)=>{ ctx.font='800 16px '+col("--f-num"); const tw=ctx.measureText(text).width+10; ctx.fillStyle=col("--card"); ctx.fillRect(x-tw/2,y-10,tw,20); ctx.fillStyle=col("--flag"); ctx.fillText(text,x,y+1); };
+    tag((O[0]+T[0])/2,(O[1]+T[1])/2, fmt(dist(P.xy,st.target)));
+    tag((T[0]+G[0])/2,(T[1]+G[1])/2, fmt(dist(st.target,h.gc)));
+  }
+  if(P.live){
+    const r=Math.max(P.acc*V.sc,10);
+    ctx.globalAlpha=.18; ctx.fillStyle=col("--gps"); ctx.beginPath(); ctx.arc(O[0],O[1],r,0,7); ctx.fill(); ctx.globalAlpha=1;
+    ctx.fillStyle=col("--gps"); ctx.strokeStyle=col("--card"); ctx.lineWidth=3; ctx.beginPath(); ctx.arc(O[0],O[1],7,0,7); ctx.fill(); ctx.stroke();
+  } else {
+    ctx.strokeStyle=col("--ink"); ctx.lineWidth=2; ctx.beginPath(); ctx.arc(O[0],O[1],7,0,7); ctx.stroke();
+  }
+}
+
+/* ---------- Holes ---------- */
+function goHole(i){
+  if(!st.course) return;
+  st.hi=Math.max(0, Math.min(st.course.holes.length-1, i)); st.target=null;
+  LS.set("ty.hole", st.hi); render();
+}
+
+/* ---------- Rounds & shots ---------- */
+function ensureRound(){ if(!st.round){ st.round={ id:Date.now().toString(36), course:COURSE.name, started:Date.now(), holes:{} }; saveRound(); } }
+function holeRec(n){ ensureRound(); return st.round.holes[n] || (st.round.holes[n]={ shots:[], putts:null, score:null, done:false }); }
+function detectLie(P,rec){
+  if(!rec.shots.length) return "Tee";
+  if(!P.live) return "Fairway";
+  const c=st.course, x=P.xy;
+  if(c.greens.some(g=>inPoly(x,g))) return "Green";
+  if(c.bunkers.some(b=>inPoly(x,b))) return "Bunker";
+  if(c.tees.some(t=>inPoly(x,t))) return "Tee";
+  if(c.fairways.some(f=>inPoly(x,f))) return "Fairway";
+  return "Rough";
+}
+function chipRow(el, items, selected, onPick){
+  el.innerHTML="";
+  items.forEach(v=>{ const b=document.createElement("button"); b.className="chip"; b.textContent=v.label!=null?v.label:v;
+    const val=v.value!=null?v.value:v; b.setAttribute("aria-pressed", String(val===selected)); b.onclick=()=>onPick(val); el.appendChild(b); });
+}
+function openShot(){
+  const h=curHole(); if(!h) return toast("Course data isn't loaded yet.");
+  const rec=(st.round && st.round.holes[h.n]) || { shots:[] };
+  st.lie=detectLie(player(), rec);
+  renderShotSheet(); show("shotSheet");
+}
+function renderShotSheet(){
+  const h=curHole(), rec=(st.round && st.round.holes[h.n]) || { shots:[] };
+  $("shotTitle").textContent = "Hole "+h.n+" · shot "+(rec.shots.length+1);
+  chipRow($("lieChips"), LIES, st.lie, v=>{ st.lie=v; renderShotSheet(); });
+  const grid=$("clubGrid"); grid.innerHTML="";
+  st.settings.clubs.forEach(c=>{ const b=document.createElement("button"); b.className="club"; b.textContent=c; b.onclick=()=>logShot(c); grid.appendChild(b); });
+  $("undoBtn").disabled = !rec.shots.length; $("penBtn").disabled = !rec.shots.length;
+}
+function logShot(club){
+  const h=curHole(), rec=holeRec(h.n), P=player(), s=P.live ? P.s : null, g=greenNums(P.xy,h);
+  rec.shots.push({ t:Date.now(), club, lie:st.lie, lat:s?+s.lat.toFixed(7):null, lon:s?+s.lon.toFixed(7):null, acc:s?Math.round(s.acc):null, toMid:Math.round(g.mid), pen:0 });
+  rec.done=false; saveRound(); hide("shotSheet"); st.target=null;
+  toast("Shot "+rec.shots.length+": "+club+" from the "+st.lie.toLowerCase()+", "+fmt(g.mid)+" "+unit()+" out"+(P.live?"":" (no GPS, position not saved)"));
+  render();
+}
+function addPenalty(){
+  const h=curHole(), rec=holeRec(h.n); if(!rec.shots.length) return;
+  rec.shots[rec.shots.length-1].pen++; saveRound(); hide("shotSheet"); toast("Penalty stroke added"); render();
+}
+function undoShot(){
+  const h=curHole(), rec=holeRec(h.n); if(!rec.shots.length) return;
+  rec.shots.pop(); saveRound(); renderShotSheet(); toast("Last shot removed"); render();
+}
+const penalties = rec => rec.shots.reduce((s,x)=>s+(x.pen||0),0);
+function openOut(){
+  const h=curHole(); if(!h) return toast("Course data isn't loaded yet.");
+  const rec=holeRec(h.n);
+  st.out={ par:parOf(h)||4, putts: rec.putts!=null ? rec.putts : 2, touched: rec.done };
+  st.out.score = rec.done ? rec.score : rec.shots.length + st.out.putts + penalties(rec);
+  if(!rec.done && !rec.shots.length) st.out.score = st.out.par;
+  renderOut(); show("outSheet");
+}
+function renderOut(){
+  const h=curHole(), rec=holeRec(h.n), o=st.out;
+  $("outTitle").textContent="Hole "+h.n;
+  chipRow($("parChips"), [3,4,5], o.par, v=>{ o.par=v; if(!o.touched && !rec.shots.length) o.score=v; renderOut(); });
+  chipRow($("puttChips"), [0,1,2,3,4,5], o.putts, v=>{ o.putts=v; if(!o.touched && rec.shots.length) o.score=rec.shots.length+v+penalties(rec); renderOut(); });
+  $("scVal").textContent=o.score;
+  const diff=o.score-o.par;
+  $("scNote").textContent = (diff===0?"Par":diff<0?(diff===-1?"Birdie":diff===-2?"Eagle":diff+" under"):(diff===1?"Bogey":diff===2?"Double bogey":"+"+diff)) +
+    (rec.shots.length ? " · "+rec.shots.length+" logged + "+o.putts+" putts"+(penalties(rec)?" + "+penalties(rec)+" penalty":"") : "");
+}
+function saveHole(){
+  const h=curHole(), rec=holeRec(h.n), o=st.out;
+  rec.putts=o.putts; rec.score=o.score; rec.done=true;
+  if(o.par !== h.par) st.settings.par[h.n]=o.par; else delete st.settings.par[h.n];
+  saveSettings(); saveRound(); hide("outSheet");
+  toast("Hole "+h.n+": "+o.score);
+  if(st.hi < st.course.holes.length-1) goHole(st.hi+1); else { render(); openCard(); }
+}
+
+/* ---------- Stats ---------- */
+function holeByN(n){ return st.course ? st.course.holes.find(h=>h.n==n) : null; }
+function computeStats(rounds){
+  const clubs={}; let holes=0, score=0, par=0, putts=0, puttHoles=0, fir=0, firN=0, gir=0, girN=0;
+  rounds.forEach(r=>Object.entries(r.holes||{}).forEach(([n,rec])=>{
+    const h=holeByN(n), p=(st.settings.par[n]) || (h && h.par) || null;
+    if(rec.done){
+      holes++; score+=rec.score; if(p) par+=p;
+      if(rec.putts!=null){ putts+=rec.putts; puttHoles++; }
+      if(p){ girN++; if(rec.score - (rec.putts||0) <= p-2) gir++; }
+      if(p && p>=4 && rec.shots.length>=2){ firN++; if(rec.shots[1].lie==="Fairway" || rec.shots[1].lie==="Green") fir++; }
+    }
+    const sh=rec.shots;
+    sh.forEach((s,i)=>{
+      if(s.lat==null || s.pen) return;
+      let end=null;
+      if(i<sh.length-1){ const nx=sh[i+1]; if(nx.lat!=null) end=st.pj ? st.pj([nx.lat,nx.lon]) : null; }
+      else if(rec.done && rec.putts>0 && h) end=h.gc;
+      if(!end || !st.pj) return;
+      const d=dist(st.pj([s.lat,s.lon]), end); if(d<5) return;
+      (clubs[s.club]=clubs[s.club]||[]).push(d);
+    });
+  }));
+  return { holes, score, par, putts, puttHoles, fir, firN, gir, girN, clubs };
+}
+const median = a => { const b=a.slice().sort((x,y)=>x-y), m=b.length>>1; return b.length%2 ? b[m] : (b[m-1]+b[m])/2; };
+let endArmed=false;
+function openCard(){ endArmed=false; renderCard(); show("cardSheet"); }
+function renderCard(){
+  const body=$("cardBody"); body.innerHTML="";
+  const sec=html=>{ const d=document.createElement("div"); d.className="set"; d.innerHTML=html; body.appendChild(d); return d; };
+  if(st.round && st.course){
+    const rows=st.course.holes.map(h=>{ const r=st.round.holes[h.n]; return { n:h.n, par:parOf(h), score:r&&r.done?r.score:null, putts:r&&r.done?r.putts:null, shots:r?r.shots.length:0 }; });
+    let tS=0,tP=0,tPu=0;
+    const tr=rows.map(r=>{ if(r.score!=null){ tS+=r.score; tP+=r.par||0; tPu+=r.putts||0; }
+      return `<tr><td>${r.n}</td><td>${r.par||"–"}</td><td class="big">${r.score!=null?r.score:(r.shots?"·":"")}</td><td>${r.putts!=null?r.putts:""}</td></tr>`; }).join("");
+    const diff=tS-tP;
+    const d=sec(`<span class="lab">This round · started ${new Date(st.round.started).toLocaleTimeString([], {hour:"numeric",minute:"2-digit"})}</span>
+      <div class="scroll"><table><thead><tr><th>Hole</th><th>Par</th><th>Score</th><th>Putts</th></tr></thead><tbody>${tr}</tbody>
+      <tfoot><tr><td><b>Total</b></td><td>${tP||""}</td><td class="big">${tS||""}</td><td>${tPu||""}</td></tr></tfoot></table></div>
+      <p class="muted">${tS ? (diff===0?"Even par":diff>0?"+"+diff:diff)+" for holes played" : "No holes finished yet."}</p>
+      <button class="btn small danger" id="endRound">End round and save it</button>`);
+    d.querySelector("#endRound").onclick=e=>{
+      if(!endArmed){ endArmed=true; e.target.textContent="Tap again to end the round"; return; }
+      st.round.ended=Date.now(); st.history.push(st.round); LS.set("ty.history", st.history);
+      st.round=null; saveRound(); LS.set("ty.round", null); endArmed=false; toast("Round saved"); renderCard(); render();
+    };
+  } else sec(`<p class="muted">No round in progress. Logging a shot or holing out starts one.</p>`);
+
+  const all=st.history.concat(st.round?[st.round]:[]);
+  const S=computeStats(all);
+  if(S.holes){
+    sec(`<span class="lab">All rounds · ${S.holes} holes</span>
+      <div class="stats">
+        <div><span class="num">${S.par?((S.score-S.par)>0?"+":"")+((S.score-S.par)/S.holes*18).toFixed(1):"–"}</span><span class="lab">vs par / 18</span></div>
+        <div><span class="num">${S.puttHoles?(S.putts/S.puttHoles*18).toFixed(1):"–"}</span><span class="lab">putts / 18</span></div>
+        <div><span class="num">${S.firN?Math.round(S.fir/S.firN*100)+"%":"–"}</span><span class="lab">fairways</span></div>
+        <div><span class="num">${S.girN?Math.round(S.gir/S.girN*100)+"%":"–"}</span><span class="lab">greens in reg</span></div>
+      </div>`);
+  }
+  const cl=Object.entries(S.clubs).sort((a,b)=>median(b[1])-median(a[1]));
+  if(cl.length){
+    sec(`<span class="lab">Your club distances (${unit()})</span>
+      <div class="scroll"><table><thead><tr><th>Club</th><th>Typical</th><th>Longest</th><th>Shots</th></tr></thead><tbody>
+      ${cl.map(([c,a])=>`<tr><td>${esc(c)}</td><td class="big">${fmt(median(a))}</td><td>${fmt(Math.max(...a))}</td><td>${a.length}</td></tr>`).join("")}
+      </tbody></table></div><p class="muted">From where each logged shot was hit to where the next one was. Shots with a penalty are left out.</p>`);
+  } else sec(`<p class="muted">Club distances appear here once you've logged a few shots with GPS on.</p>`);
+
+  if(st.history.length){
+    sec(`<span class="lab">Past rounds</span><div class="scroll"><table><thead><tr><th>Date</th><th>Holes</th><th>Score</th><th>Putts</th></tr></thead><tbody>
+      ${st.history.slice().reverse().map(r=>{ const d=Object.values(r.holes).filter(x=>x.done); return `<tr><td>${new Date(r.started).toLocaleDateString([], {day:"numeric",month:"short"})}</td><td>${d.length}</td><td class="big">${d.reduce((s,x)=>s+x.score,0)}</td><td>${d.reduce((s,x)=>s+(x.putts||0),0)}</td></tr>`; }).join("")}
+      </tbody></table></div>`);
+  }
+}
+const esc = s => String(s).replace(/[&<>"]/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+
+/* ---------- Settings ---------- */
+function openSettings(){
+  chipRow($("unitChips"), [{label:"Metres",value:"m"},{label:"Yards",value:"yd"}], st.settings.units, v=>{ st.settings.units=v; saveSettings(); openSettings(); render(); });
+  $("autoAdv").checked=!!st.settings.auto;
+  $("clubsTxt").value=st.settings.clubs.join("\n");
+  const c=st.course;
+  $("courseInfo").textContent = c && st.raw ? `${c.name}: ${c.counts.holes} holes, ${c.counts.greens} greens, ${c.counts.bunkers} bunkers, from ${st.raw.source} on ${new Date(st.raw.at).toLocaleDateString([], {day:"numeric",month:"short",year:"numeric"})}.` : "Not loaded yet.";
+  const n=st.history.length + (st.round?1:0);
+  $("roundInfo").textContent = n ? `${st.history.length} saved round${st.history.length===1?"":"s"}${st.round?" plus the one in progress":""}. Export them and send the file to Claude for a strokes-gained breakdown.` : "No rounds yet.";
+  $("exportBtn").disabled=!n;
+  show("setSheet");
+}
+async function exportRounds(){
+  const data={ app:"Trentham Yardage", exported:new Date().toISOString(), units_note:"all distances in metres",
+    course:{ name:COURSE.name, holes:(st.course?st.course.holes:[]).map(h=>({ n:h.n, par:parOf(h), length_m:Math.round(h.len),
+      green_middle: st.ll ? st.ll(h.gc).map(v=>+v.toFixed(7)) : null })) },
+    rounds: st.history.concat(st.round ? [Object.assign({ inProgress:true }, st.round)] : []) };
+  const name="trentham-rounds-"+new Date().toISOString().slice(0,10)+".json";
+  const blob=new Blob([JSON.stringify(data,null,1)], { type:"application/json" });
+  try{
+    const file=new File([blob], name, { type:"application/json" });
+    if(navigator.canShare && navigator.canShare({ files:[file] })){ await navigator.share({ files:[file], title:name }); return; }
+  }catch(e){ if(e && e.name==="AbortError") return; }
+  const a=document.createElement("a"); a.href=URL.createObjectURL(blob); a.download=name; document.body.appendChild(a); a.click();
+  setTimeout(()=>{ URL.revokeObjectURL(a.href); a.remove(); }, 1500);
+}
+
+/* ---------- Sheets, toast, wake lock ---------- */
+function show(id){ $(id).hidden=false; }
+function hide(id){ $(id).hidden=true; }
+document.querySelectorAll(".sheet").forEach(s=>s.addEventListener("click", e=>{ if(e.target.hasAttribute("data-close")) s.hidden=true; }));
+let toastT=null;
+function toast(msg){ const t=$("toast"); t.textContent=msg; t.hidden=false; clearTimeout(toastT); toastT=setTimeout(()=>{ t.hidden=true; }, 3200); }
+let wakeLock=null;
+async function keepAwake(){
+  try{ if("wakeLock" in navigator && document.visibilityState==="visible" && !wakeLock){ wakeLock=await navigator.wakeLock.request("screen"); wakeLock.addEventListener("release", ()=>{ wakeLock=null; }); } }catch(e){}
+}
+document.addEventListener("visibilitychange", ()=>{ if(document.visibilityState==="visible"){ keepAwake(); render(); } });
+document.addEventListener("pointerdown", keepAwake);
+
+/* ---------- Wiring ---------- */
+$("prev").onclick=()=>goHole(st.hi-1);
+$("next").onclick=()=>goHole(st.hi+1);
+$("holeBtn").onclick=()=>{
+  if(!st.course) return;
+  const g=$("holeGrid"); g.innerHTML="";
+  st.course.holes.forEach((h,i)=>{ const b=document.createElement("button"); b.textContent=h.n; b.setAttribute("aria-current", String(i===st.hi));
+    if(st.round && st.round.holes[h.n] && st.round.holes[h.n].done) b.className="done";
+    b.onclick=()=>{ hide("pickSheet"); goHole(i); }; g.appendChild(b); });
+  show("pickSheet");
+};
+$("logBtn").onclick=openShot;
+$("outBtn").onclick=openOut;
+$("cardBtn").onclick=openCard;
+$("setBtn").onclick=openSettings;
+$("penBtn").onclick=addPenalty;
+$("undoBtn").onclick=undoShot;
+$("scMinus").onclick=()=>{ st.out.score=Math.max(1,st.out.score-1); st.out.touched=true; renderOut(); };
+$("scPlus").onclick=()=>{ st.out.score++; st.out.touched=true; renderOut(); };
+$("saveHole").onclick=saveHole;
+$("autoAdv").onchange=e=>{ st.settings.auto=e.target.checked; saveSettings(); };
+$("clubsTxt").onchange=e=>{ const c=e.target.value.split(/[\n,]+/).map(s=>s.trim()).filter(Boolean); st.settings.clubs=c.length?c:DEFAULT_CLUBS; saveSettings(); };
+$("refreshBtn").onclick=()=>{ hide("setSheet"); fetchCourse(); };
+$("importBtn").onclick=()=>$("importFile").click();
+$("importFile").onchange=e=>{ if(e.target.files[0]) importFile(e.target.files[0]); e.target.value=""; };
+$("map").addEventListener("click", e=>{
+  if(!st.view || !curHole()) return;
+  const r=e.currentTarget.getBoundingClientRect(), x=e.clientX-r.left, y=e.clientY-r.top;
+  if(st.target){ const T=st.view.toS(st.target); if(Math.hypot(T[0]-x,T[1]-y)<26){ st.target=null; render(); return; } }
+  st.target=st.view.fromS(x,y); $("mapHint").hidden=true; render();
+});
+window.addEventListener("resize", ()=>drawMap());
+if(window.matchMedia) window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", ()=>drawMap());
+setInterval(()=>{ if(st.fixes.length) renderStatus(); }, 5000);
+
+/* ---------- Start ---------- */
+if(st.raw && st.raw.els) buildCourse(); else { render(); loadBundled(); }
+startGPS();
+if("serviceWorker" in navigator && location.protocol==="https:") navigator.serviceWorker.register("sw.js").catch(()=>{});
+if(document.fonts) document.fonts.ready.then(()=>drawMap());
+</script>
+</body>
+</html>
