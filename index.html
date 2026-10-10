@@ -244,7 +244,8 @@ textarea{width:100%;min-height:96px;border-radius:10px;border:1.5px solid var(--
 const COURSE = {
   name: "Trentham Golf Club",
   match: /trentham/i,
-  bbox: [-37.41, 144.28, -37.355, 144.36] // S, W, N, E — generous box around Trentham, VIC
+  bbox: [-37.41, 144.28, -37.355, 144.36], // S, W, N, E — generous box around Trentham, VIC
+  par: [4,3,4,4,3,4,4,4,5, 4,4,4,3,4,3,4,5,4] // men's card from the club's course guide (70); the map data has none
 };
 const OVERPASS = [
   "https://overpass-api.de/api/interpreter",
@@ -515,6 +516,7 @@ const ordinal = n => n + (["th","st","nd","rd"][((n%100-20)%10)] || ["th","st","
 function buildCourse(){
   try{
     st.course=processCourse(st.raw.els, COURSE.match);
+    st.course.holes.forEach(h=>{ if(!h.par) h.par=COURSE.par[h.n-1]||null; });
     st.pj=makeProj(st.course.center); st.ll=unproj(st.course.center);
     if(!(st.hi>=0 && st.hi<st.course.holes.length)) st.hi=0;
     showBanner(null);
