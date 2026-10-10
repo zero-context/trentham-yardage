@@ -96,6 +96,7 @@ main{display:grid;grid-template-columns:minmax(0,1.12fr) minmax(0,1fr);gap:12px;
 .clubs{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
 .club{min-height:54px;border-radius:10px;border:1.5px solid var(--line);background:var(--paper);font-weight:600;font-size:17px}
 .club:active{background:var(--fairway)}
+.cardimg{display:block;width:100%;height:auto;border-radius:10px;border:1.5px solid var(--line)}
 .pair{display:grid;grid-template-columns:1fr 1fr;gap:8px}
 .stepper{display:flex;align-items:center;gap:14px}
 .stepper .num{font-size:56px;font-weight:800;min-width:1.6em;text-align:center;line-height:1}
@@ -209,6 +210,21 @@ textarea{width:100%;min-height:96px;border-radius:10px;border:1.5px solid var(--
     <div id="cardBody"></div>
   </div>
 </div>
+
+<!-- Card photo -->
+<div class="sheet" id="photoSheet" hidden role="dialog" aria-modal="true" aria-labelledby="photoTitle">
+  <div class="scrim" data-close></div>
+  <div class="panel">
+    <div class="top"><h2 id="photoTitle">Card photo</h2><button class="close" data-close>Close</button></div>
+    <img id="photoImg" class="cardimg" alt="Photo of the scorecard">
+    <div class="pair">
+      <button class="btn small" id="photoShare">Share or save</button>
+      <button class="btn small" id="photoReplace">Replace</button>
+    </div>
+    <button class="btn small danger" id="photoRemove">Remove photo</button>
+  </div>
+</div>
+<input type="file" id="cardFile" accept="image/*" hidden>
 
 <!-- Settings -->
 <div class="sheet" id="setSheet" hidden role="dialog" aria-modal="true" aria-labelledby="setTitle">
@@ -843,7 +859,10 @@ function renderCard(){
       <div class="scroll"><table><thead><tr><th>Hole</th><th>Par</th><th>Score</th><th>Putts</th></tr></thead><tbody>${tr}</tbody>
       <tfoot><tr><td><b>Total</b></td><td>${tP||""}</td><td class="big">${tS||""}</td><td>${tPu||""}</td></tr></tfoot></table></div>
       <p class="muted">${tS ? (diff===0?"Even par":diff>0?"+"+diff:diff)+" for holes played" : "No holes finished yet."}</p>
+      <button class="btn small" id="cardPhoto">${st.round.card ? "View the card photo" : "Add a photo of the card"}</button>
       <button class="btn small danger" id="endRound">End round and save it</button>`);
+    const rid=st.round.started;
+    d.querySelector("#cardPhoto").onclick=()=> roundById(rid).card ? openCardPhoto(rid) : pickCardPhoto(rid);
     d.querySelector("#endRound").onclick=e=>{
       if(!endArmed){ endArmed=true; e.target.textContent="Tap again to end the round"; return; }
       st.round.ended=Date.now(); st.history.push(st.round); LS.set("ty.history", st.history);
@@ -871,10 +890,88 @@ function renderCard(){
   } else sec(`<p class="muted">Club distances appear here once you've logged a few shots with GPS on.</p>`);
 
   if(st.history.length){
-    sec(`<span class="lab">Past rounds</span><div class="scroll"><table><thead><tr><th>Date</th><th>Holes</th><th>Score</th><th>Putts</th></tr></thead><tbody>
-      ${st.history.slice().reverse().map(r=>{ const d=Object.values(r.holes).filter(x=>x.done); return `<tr><td>${new Date(r.started).toLocaleDateString([], {day:"numeric",month:"short"})}</td><td>${d.length}</td><td class="big">${d.reduce((s,x)=>s+x.score,0)}</td><td>${d.reduce((s,x)=>s+(x.putts||0),0)}</td></tr>`; }).join("")}
+    const pr=sec(`<span class="lab">Past rounds</span><div class="scroll"><table><thead><tr><th>Date</th><th>Holes</th><th>Score</th><th>Putts</th><th>Card</th></tr></thead><tbody>
+      ${st.history.slice().reverse().map(r=>{ const d=Object.values(r.holes).filter(x=>x.done); return `<tr><td>${new Date(r.started).toLocaleDateString([], {day:"numeric",month:"short"})}</td><td>${d.length}</td><td class="big">${d.reduce((s,x)=>s+x.score,0)}</td><td>${d.reduce((s,x)=>s+(x.putts||0),0)}</td><td><button class="btn small" data-card="${r.started}">${r.card?"View":"Add"}</button></td></tr>`; }).join("")}
       </tbody></table></div>`);
+    pr.querySelectorAll("[data-card]").forEach(b=>b.onclick=()=>{ const id=+b.dataset.card, r=roundById(id); if(r && r.card) openCardPhoto(id); else pickCardPhoto(id); });
   }
+}
+/* ---------- Card photos ---------- */
+/* Kept in the phone's IndexedDB, keyed by the round's start time: a photo is far too big for localStorage.
+   The round itself only carries card:true so the scorecard can show the right button without a lookup. */
+let photoDB=null, photoFor=null, photoId=null, photoURL=null, removeArmed=false;
+function openPhotoDB(){
+  return photoDB || (photoDB=new Promise((res,rej)=>{
+    const q=indexedDB.open("ty-photos",1);
+    q.onupgradeneeded=()=>q.result.createObjectStore("cards");
+    q.onsuccess=()=>res(q.result);
+    q.onerror=()=>{ photoDB=null; rej(q.error || new Error("photo storage wouldn't open")); };
+  }));
+}
+async function photoStore(mode, fn){
+  const db=await openPhotoDB();
+  return new Promise((res,rej)=>{
+    const tx=db.transaction("cards",mode), rq=fn(tx.objectStore("cards"));
+    tx.oncomplete=()=>res(rq.result); tx.onerror=tx.onabort=()=>rej(tx.error || new Error("photo storage failed"));
+  });
+}
+/* phone photos run 3-12 MB; 1800 px on the long side keeps a card readable at roughly half a megabyte */
+function shrinkPhoto(file){
+  return new Promise((res,rej)=>{
+    const url=URL.createObjectURL(file), im=new Image();
+    im.onload=()=>{
+      const k=Math.min(1, 1800/Math.max(im.naturalWidth, im.naturalHeight)), c=document.createElement("canvas");
+      c.width=Math.round(im.naturalWidth*k); c.height=Math.round(im.naturalHeight*k);
+      c.getContext("2d").drawImage(im,0,0,c.width,c.height); URL.revokeObjectURL(url);
+      c.toBlob(b=>b ? res(b) : rej(new Error("the photo couldn't be shrunk")), "image/jpeg", 0.82);
+    };
+    im.onerror=()=>{ URL.revokeObjectURL(url); rej(new Error("that file isn't a picture this phone can read")); };
+    im.src=url;
+  });
+}
+const roundById = id => (st.round && st.round.started===id) ? st.round : (st.history.find(r=>r.started===id) || null);
+function flagCard(id, on){
+  const r=roundById(id); if(!r) return;
+  if(on) r.card=true; else delete r.card;
+  if(r===st.round) saveRound(); else LS.set("ty.history", st.history);
+}
+function pickCardPhoto(id){ photoFor=id; $("cardFile").click(); }
+async function addCardPhoto(id, file){
+  try{
+    const blob=await shrinkPhoto(file);
+    await photoStore("readwrite", s=>s.put(blob,id));
+    flagCard(id,true);
+    if(navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(e=>console.warn("Couldn't ask the phone to keep photos:", e));
+    toast("Card photo saved"); renderCard();
+    if(!$("photoSheet").hidden) openCardPhoto(id);
+  }catch(e){ console.error("Card photo not saved:", e); toast("Couldn't save the photo: "+((e && e.message) || e)); }
+}
+async function openCardPhoto(id){
+  try{
+    const blob=await photoStore("readonly", s=>s.get(id));
+    if(!blob){ flagCard(id,false); renderCard(); hide("photoSheet"); return toast("That photo is no longer on this phone."); }
+    if(photoURL) URL.revokeObjectURL(photoURL);
+    photoURL=URL.createObjectURL(blob); photoId=id; removeArmed=false;
+    $("photoImg").src=photoURL; $("photoRemove").textContent="Remove photo";
+    $("photoTitle").textContent="Card · "+new Date(id).toLocaleDateString([], {day:"numeric",month:"short",year:"numeric"});
+    show("photoSheet");
+  }catch(e){ console.error("Card photo not opened:", e); toast("Couldn't open the photo: "+((e && e.message) || e)); }
+}
+async function shareCardPhoto(){
+  try{
+    const blob=await photoStore("readonly", s=>s.get(photoId)); if(!blob) return toast("That photo is no longer on this phone.");
+    const name="trentham-card-"+new Date(photoId).toISOString().slice(0,10)+".jpg", file=new File([blob], name, { type:"image/jpeg" });
+    if(navigator.canShare && navigator.canShare({ files:[file] })){ await navigator.share({ files:[file], title:name }); return; }
+    const a=document.createElement("a"); a.href=URL.createObjectURL(blob); a.download=name; document.body.appendChild(a); a.click();
+    setTimeout(()=>{ URL.revokeObjectURL(a.href); a.remove(); }, 1500);
+  }catch(e){ if(e && e.name==="AbortError") return; console.error("Card photo not shared:", e); toast("Couldn't share the photo: "+((e && e.message) || e)); }
+}
+async function removeCardPhoto(){
+  if(!removeArmed){ removeArmed=true; $("photoRemove").textContent="Tap again to remove it"; return; }
+  try{
+    await photoStore("readwrite", s=>s.delete(photoId));
+    flagCard(photoId,false); hide("photoSheet"); toast("Card photo removed"); renderCard();
+  }catch(e){ console.error("Card photo not removed:", e); toast("Couldn't remove the photo: "+((e && e.message) || e)); }
 }
 const esc = s => String(s).replace(/[&<>"]/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
@@ -941,6 +1038,10 @@ $("saveHole").onclick=saveHole;
 $("autoAdv").onchange=e=>{ st.settings.auto=e.target.checked; saveSettings(); };
 $("clubsTxt").onchange=e=>{ const c=e.target.value.split(/[\n,]+/).map(s=>s.trim()).filter(Boolean); st.settings.clubs=c.length?c:DEFAULT_CLUBS; saveSettings(); };
 $("refreshBtn").onclick=()=>{ hide("setSheet"); fetchCourse(); };
+$("cardFile").onchange=e=>{ const f=e.target.files[0]; e.target.value=""; if(f && photoFor!=null) addCardPhoto(photoFor, f); };
+$("photoShare").onclick=shareCardPhoto;
+$("photoReplace").onclick=()=>pickCardPhoto(photoId);
+$("photoRemove").onclick=removeCardPhoto;
 $("importBtn").onclick=()=>$("importFile").click();
 $("importFile").onchange=e=>{ if(e.target.files[0]) importFile(e.target.files[0]); e.target.value=""; };
 $("map").addEventListener("click", e=>{

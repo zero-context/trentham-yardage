@@ -7,6 +7,10 @@ A single-page web app that installs to a phone's home screen and runs with no si
 - `course.json` — the course from OpenStreetMap (© OpenStreetMap contributors, ODbL), bundled so the first load needs no map server
 - `sw.js` — keeps the app on the phone for offline use; bump `VERSION` whenever any file changes
 - `manifest.webmanifest`, `icon-*.png` — home-screen install
+- `test/regress.js` — `node test/regress.js` checks every hole's pars, distances and hazards against `test/golden.txt`
+
+Scorecard photos are shrunk to 1800 px and kept in the phone's own storage (IndexedDB),
+alongside the rounds. Nothing is uploaded anywhere; use "Share or save" to get one off the phone.
 
 It has to be served over HTTPS (or from localhost): phones only allow GPS and
 offline storage on a secure page. Local test: `python3 -m http.server 8791 --bind 127.0.0.1`.
