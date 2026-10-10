@@ -104,6 +104,7 @@ main{display:grid;grid-template-columns:minmax(0,1.12fr) minmax(0,1fr);gap:12px;
 .dists{display:grid;gap:6px}
 .dists label{display:grid;grid-template-columns:minmax(0,1fr) 4.6em minmax(0,1.5fr);align-items:center;gap:8px;font-weight:600}
 .dists input{min-height:44px;width:100%;border-radius:10px;border:1.5px solid var(--line);background:var(--paper);color:var(--ink);font:inherit;font-size:16px;text-align:right;padding:0 8px}
+.field{min-height:44px;width:100%;border-radius:10px;border:1.5px solid var(--line);background:var(--paper);color:var(--ink);font:inherit;font-size:16px;padding:0 10px}
 .dists small{font-weight:400;font-size:12px;color:var(--ink-2)}
 .cardimg{display:block;width:100%;height:auto;border-radius:10px;border:1.5px solid var(--line)}
 .pair{display:grid;grid-template-columns:1fr 1fr;gap:8px}
@@ -271,6 +272,15 @@ textarea{width:100%;min-height:96px;border-radius:10px;border:1.5px solid var(--
       </div>
       <p class="muted">A backup is one file holding every round, card photo and setting. Restoring adds whatever this phone is missing and never deletes anything.</p>
       <input type="file" id="restoreFile" hidden>
+    </div>
+    <div class="set"><span class="lab">Sync to GitHub</span>
+      <p class="muted" id="syncInfo"></p>
+      <input class="field" type="password" id="syncToken" placeholder="Paste your access token" autocomplete="off" autocapitalize="off" spellcheck="false">
+      <div class="pair">
+        <button class="btn small" id="syncSave">Save token</button>
+        <button class="btn small" id="syncNow">Sync now</button>
+      </div>
+      <p class="muted">Finished rounds and card photos are copied to your private GitHub repo whenever the phone has signal. The token stays on this phone and is never put in a backup.</p>
     </div>
   </div>
 </div>
@@ -913,7 +923,8 @@ function renderCard(){
     d.querySelector("#endRound").onclick=e=>{
       if(!endArmed){ endArmed=true; e.target.textContent="Tap again to end the round"; return; }
       st.round.ended=Date.now(); st.history.push(st.round); LS.set("ty.history", st.history);
-      st.round=null; saveRound(); LS.set("ty.round", null); endArmed=false; toast("Round saved. Back it up from Settings (•••)."); renderCard(); render();
+      st.round=null; saveRound(); LS.set("ty.round", null); endArmed=false; renderCard(); render();
+      if(syncToken()){ toast("Round saved. Copying it to GitHub…"); syncAll("round"); } else toast("Round saved. Back it up from Settings (•••).");
     };
   } else sec(`<p class="muted">No round in progress. Logging a shot or holing out starts one.</p>`);
 
@@ -1039,7 +1050,7 @@ async function addCardPhoto(id, file){
   try{
     const blob=await shrinkPhoto(file);
     await photoStore("readwrite", s=>s.put(blob,id));
-    flagCard(id,true);
+    flagCard(id,true); unsyncPhoto(id); syncAll(false);
     if(navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(e=>console.warn("Couldn't ask the phone to keep photos:", e));
     toast("Card photo saved"); renderCard();
     if(!$("photoSheet").hidden) openCardPhoto(id);
@@ -1072,6 +1083,91 @@ async function removeCardPhoto(){
     flagCard(photoId,false); hide("photoSheet"); toast("Card photo removed"); renderCard();
   }catch(e){ console.error("Card photo not removed:", e); toast("Couldn't remove the photo: "+((e && e.message) || e)); }
 }
+/* ---------- Sync to GitHub ---------- */
+/* Each finished round goes to rounds/<date>_<start>.json and its card photo to photos/<date>_<start>.jpg in a private repo,
+   through GitHub's contents API. Nothing is ever deleted there. ty.synced remembers what has already gone, by content hash. */
+const SYNC = { api:"https://api.github.com", repo:"zero-context/trentham-rounds", busy:false, again:false };
+const syncToken = () => { const c=LS.get("ty.sync",null); return c && c.token ? c.token : null; };
+const hashStr = s => { let h=5381; for(let i=0;i<s.length;i++) h=((h<<5)+h+s.charCodeAt(i))|0; return (h>>>0).toString(36)+"."+s.length; };
+const b64utf8 = s => { const b=new TextEncoder().encode(s); let o=""; for(let i=0;i<b.length;i+=0x8000) o+=String.fromCharCode.apply(null, b.subarray(i,i+0x8000)); return btoa(o); };
+const roundFile = r => { const d=new Date(r.started), z=n=>String(n).padStart(2,"0"); return d.getFullYear()+"-"+z(d.getMonth()+1)+"-"+z(d.getDate())+"_"+r.started; };
+const roundBody = r => JSON.stringify(r,null,1);
+function syncPending(){
+  const done=LS.get("ty.synced",{});
+  return st.history.filter(r=>{ const d=done[r.started]||{}; return d.h!==hashStr(roundBody(r)) || (r.card && !d.photo); }).length;
+}
+async function gh(method, path, body){
+  let r;
+  try{ r=await fetch(SYNC.api+"/repos/"+SYNC.repo+path, { method, cache:"no-store", body: body ? JSON.stringify(body) : undefined,
+    headers:{ "Authorization":"Bearer "+syncToken(), "Accept":"application/vnd.github+json", "Content-Type":"application/json" } }); }
+  catch(e){ throw new Error("couldn't reach GitHub"); }
+  return r;
+}
+const ghErr = r => r.status===401 ? "GitHub rejected the token (mistyped or expired)" : r.status===403 ? "the token isn't allowed to write to the repo"
+  : r.status===404 ? "the token can't see the "+SYNC.repo+" repo" : "GitHub answered "+r.status;
+async function ghPut(path, b64, message){
+  let sha;
+  const g=await gh("GET", "/contents/"+path);
+  if(g.ok) sha=(await g.json()).sha; else if(g.status!==404) throw new Error(ghErr(g));
+  const p=await gh("PUT", "/contents/"+path, { message, content:b64, sha });
+  if(!p.ok) throw new Error(ghErr(p));
+}
+function renderSyncInfo(){
+  const el=$("syncInfo"), s=LS.get("ty.syncState",null), on=!!syncToken(), n=on ? syncPending() : 0;
+  $("syncNow").disabled=!on; $("syncToken").placeholder = on ? "Token saved. Paste a new one to replace it" : "Paste your access token";
+  if(!on){ el.textContent="Off. Paste an access token and save it to turn sync on."; return; }
+  const when = s ? new Date(s.at).toLocaleString([], {day:"numeric",month:"short",hour:"numeric",minute:"2-digit"}) : null;
+  const wait = n ? n+" round"+(n===1?"":"s")+" still to copy." : "Everything is copied.";
+  el.textContent = !s ? "On. "+wait : s.ok ? "On. Last synced "+when+". "+wait : "On, but the last try ("+when+") failed: "+s.msg+". "+wait;
+}
+/* say: speak up about the result (you asked for it, or a round just ended). Otherwise it works quietly and Settings shows the outcome */
+async function syncAll(say){
+  if(!syncToken()){ if(say==="manual") toast("Save your access token first."); return; }
+  if(!navigator.onLine){ if(say) toast(say==="manual" ? "No signal. It will sync when there is." : "Round saved. It will sync when there's signal."); return; }
+  if(SYNC.busy){ SYNC.again=true; return; }
+  SYNC.busy=true; let sent=0;
+  try{
+    for(const r of st.history.slice()){
+      const done=LS.get("ty.synced",{}), d=done[r.started] || (done[r.started]={}), body=roundBody(r), h=hashStr(body), name=roundFile(r), day=name.slice(0,10);
+      if(d.h!==h){ await ghPut("rounds/"+name+".json", b64utf8(body), "Round "+day); d.h=h; LS.set("ty.synced",done); sent++; }
+      if(r.card && !d.photo){
+        const b=await photoStore("readonly", s=>s.get(r.started));
+        if(b){ const url=await blobToDataURL(b); await ghPut("photos/"+name+".jpg", url.slice(url.indexOf(",")+1), "Card photo "+day); sent++; }
+        d.photo=true; LS.set("ty.synced",done);
+      }
+    }
+    LS.set("ty.syncState", { at:Date.now(), ok:true });
+    if(say) toast(sent ? "Synced to GitHub" : "Already up to date on GitHub");
+  }catch(e){
+    console.error("Sync failed:", e);
+    LS.set("ty.syncState", { at:Date.now(), ok:false, msg:(e && e.message) || String(e) });
+    if(say) toast((say==="manual" ? "Sync failed: " : "Round saved on the phone, but sync failed: ")+((e && e.message) || e));
+  }finally{
+    SYNC.busy=false; renderSyncInfo();
+    if(SYNC.again){ SYNC.again=false; syncAll(false); }
+  }
+}
+async function saveSyncToken(){
+  const t=$("syncToken").value.trim(); $("syncToken").value="";
+  if(!t){
+    if(!syncToken()) return toast("Paste the token first.");
+    localStorage.removeItem("ty.sync"); localStorage.removeItem("ty.syncState"); renderSyncInfo(); return toast("Sync turned off. Nothing on GitHub was removed.");
+  }
+  LS.set("ty.sync", { token:t }); renderSyncInfo();
+  try{
+    const r=await gh("GET","");
+    if(!r.ok) throw new Error(ghErr(r));
+    const j=await r.json();
+    if(j.permissions && j.permissions.push===false) throw new Error("the token can read the repo but not write to it");
+    toast("Connected to GitHub"); syncAll("manual");
+  }catch(e){
+    console.error("Token check failed:", e);
+    LS.set("ty.syncState", { at:Date.now(), ok:false, msg:(e && e.message) || String(e) }); renderSyncInfo();
+    toast("Token saved, but the check failed: "+((e && e.message) || e));
+  }
+}
+function unsyncPhoto(id){ const done=LS.get("ty.synced",{}); if(done[id]){ done[id].photo=false; LS.set("ty.synced",done); } }
+
 /* ---------- Backup and restore ---------- */
 /* Rounds, photos and settings live only in this browser's storage, so clearing Chrome's site data loses the lot.
    A backup is one file with all three; photos travel inside it as data: URLs. */
@@ -1149,7 +1245,7 @@ async function restoreBackup(file){
       }catch(e){ console.error("A card photo in the backup wasn't restored:", e); badPics++; }
     }
     if(st.hi>=0) LS.set("ty.hole", st.hi);
-    render(); openSettings();
+    render(); openSettings(); syncAll(false);
     toast((added.length || pics ? "Restored "+added.length+" round"+(added.length===1?"":"s")+" and "+pics+" photo"+(pics===1?"":"s") : "Nothing new in that backup: this phone already has it all")+
       (set ? ", plus your settings" : "")+(skipped ? ". "+skipped+" damaged round"+(skipped===1?"":"s")+" skipped" : "")+(badPics ? ". "+badPics+" photo"+(badPics===1?"":"s")+" couldn't be restored" : ""));
   }catch(e){ console.error("Backup not restored:", e); toast("Couldn't restore: "+((e && e.message) || e)); }
@@ -1167,7 +1263,7 @@ function openSettings(){
   const n=st.history.length + (st.round?1:0);
   $("roundInfo").textContent = n ? `${st.history.length} saved round${st.history.length===1?"":"s"}${st.round?" plus the one in progress":""}. Export them and send the file to Claude for a strokes-gained breakdown.` : "No rounds yet.";
   $("exportBtn").disabled=!n;
-  renderBackupInfo();
+  renderBackupInfo(); renderSyncInfo();
   show("setSheet");
 }
 async function exportRounds(){
@@ -1225,6 +1321,9 @@ $("cardFile").onchange=e=>{ const f=e.target.files[0]; e.target.value=""; if(f &
 $("photoShare").onclick=shareCardPhoto;
 $("photoReplace").onclick=()=>pickCardPhoto(photoId);
 $("photoRemove").onclick=removeCardPhoto;
+$("syncSave").onclick=saveSyncToken;
+$("syncNow").onclick=()=>syncAll("manual");
+window.addEventListener("online", ()=>syncAll(false));
 $("backupBtn").onclick=makeBackup;
 $("restoreBtn").onclick=()=>$("restoreFile").click();
 $("restoreFile").onchange=e=>{ const f=e.target.files[0]; e.target.value=""; if(f) restoreBackup(f); };
@@ -1243,6 +1342,7 @@ setInterval(()=>{ if(st.fixes.length) renderStatus(); }, 5000);
 /* ---------- Start ---------- */
 if(st.raw && st.raw.els) buildCourse(); else { render(); loadBundled(); }
 startGPS();
+syncAll(false);
 if("serviceWorker" in navigator && location.protocol==="https:") navigator.serviceWorker.register("sw.js").catch(()=>{});
 if(document.fonts) document.fonts.ready.then(()=>drawMap());
 </script>

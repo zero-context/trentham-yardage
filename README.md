@@ -17,5 +17,11 @@ setting. Restore merges by round start time: it adds what the phone is missing, 
 only takes settings from the file when the phone has no rounds. The file is outside input, so
 rounds and settings are shape-checked before they are accepted.
 
+Settings → Sync to GitHub copies each finished round to `rounds/<date>_<start>.json` and its card
+photo to `photos/<date>_<start>.jpg` in the private repo `zero-context/trentham-rounds`, using a
+fine-grained access token (Contents: read and write, that repo only) pasted into the app. The token
+is kept in the phone's storage under its own key and is never written to a backup or export. Sync
+only adds and updates; it never deletes anything on GitHub.
+
 It has to be served over HTTPS (or from localhost): phones only allow GPS and
 offline storage on a secure page. Local test: `python3 -m http.server 8791 --bind 127.0.0.1`.
