@@ -17,3 +17,33 @@ hole 15 | par 3 | len 123 | front 115 | mid 124 | back 134 | tees 1 | bunkers 2 
 hole 16 | par 4 | len 356 | front 332 | mid 342 | back 352 | tees 1 | bunkers 1 | water 0 | hazards [Greenside bunker, right 338/345]
 hole 17 | par 5 | len 416 | front 402 | mid 414 | back 426 | tees 1 | bunkers 4 | water 0 | hazards [bunker, right 380/383; bunker, centre 383/388; Greenside bunker, left 406/413; Greenside bunker, left 420/426]
 hole 18 | par 4 | len 300 | front 284 | mid 296 | back 308 | tees 2 | bunkers 1 | water 0 | hazards [Greenside bunker, left 276/284]
+club hole 1 | Driver 220 | leaves 109 | part false | carry [320=none]
+club hole 2 | 4 Iron 165 | leaves 0 | part false | carry [147=5 Iron; 164=Hybrid]
+club hole 3 | Driver 220 | leaves 74 | part false | carry [282=none]
+club hole 4 | Driver 220 | leaves 67 | part false | carry []
+club hole 5 | 7 Iron 135 | leaves 0 | part false | carry [127=7 Iron; 151=4 Iron]
+club hole 6 | Driver 220 | leaves 145 | part false | carry [354=none; 370=none]
+club hole 7 | Driver 220 | leaves 22 | part false | carry []
+club hole 8 | Driver 220 | leaves 90 | part false | carry [294=none; 308=none]
+club hole 9 | Driver 220 | leaves 221 | part false | carry [428=none; 451=none]
+club hole 10 | Driver 220 | leaves 109 | part false | carry [323=none; 325=none]
+club hole 11 | Driver 220 | leaves 57 | part false | carry []
+club hole 12 | Driver 220 | leaves 82 | part false | carry [289=none; 302=none]
+club hole 13 | 9 Iron 115 | leaves 0 | part false | carry [124=7 Iron; 125=7 Iron]
+club hole 14 | Driver 220 | leaves 79 | part false | carry []
+club hole 15 | 8 Iron 125 | leaves 0 | part false | carry [135=6 Iron; 140=5 Iron]
+club hole 16 | Driver 220 | leaves 122 | part false | carry [345=none]
+club hole 17 | Driver 220 | leaves 194 | part false | carry [383=none; 388=none; 413=none; 426=none]
+club hole 18 | Driver 220 | leaves 76 | part false | carry [284=none]
+suggest 0 | none
+suggest 30 | LW leaves 0 part true
+suggest 44 | LW leaves 0 part true
+suggest 46 | LW leaves 0 part false
+suggest 60 | LW leaves 0 part false
+suggest 67 | LW leaves 0 part false
+suggest 68 | SW leaves 0 part false
+suggest 110 | 9 Iron leaves 0 part false
+suggest 205 | 3 Wood leaves 0 part false
+suggest 235 | Driver leaves 0 part false
+suggest 236 | Driver leaves 16 part false
+suggest 150 with empty bag | null | carry 150 with empty bag | null

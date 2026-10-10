@@ -57,6 +57,9 @@ main{display:grid;grid-template-columns:minmax(0,1.12fr) minmax(0,1fr);gap:12px;
 .yard .mid .num{font-size:clamp(76px,25vw,132px);font-weight:800;line-height:.86}
 .yard .mid .lab{margin-top:2px}
 .note{font-size:13px;color:var(--ink-2)}
+.clubsug{display:flex;align-items:baseline;flex-wrap:wrap;gap:2px 8px}
+.clubsug b{font-family:var(--f-num);font-size:28px;font-weight:800;line-height:1}
+.clubsug.none{font-size:13px;color:var(--ink-2)}
 .target{display:flex;align-items:center;gap:8px;font-size:14px;border:1.5px dashed var(--flag);border-radius:10px;padding:8px 10px}
 .target b{font-family:var(--f-num);font-size:22px;font-weight:800}
 .target button{margin-left:auto;border:0;background:none;color:var(--flag);font-weight:600;padding:4px}
@@ -66,6 +69,7 @@ main{display:grid;grid-template-columns:minmax(0,1.12fr) minmax(0,1fr);gap:12px;
 .haz li.head{border:0;padding:0}
 .haz li .sw{width:12px;height:12px;border-radius:3px}
 .haz li .nm{font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.haz li .nm small{display:block;font-size:11px;color:var(--ink-2);overflow:hidden;text-overflow:ellipsis}
 .haz li .num{font-size:22px;font-weight:600;text-align:right;line-height:1}
 .haz li.head span{text-align:right}
 
@@ -96,6 +100,11 @@ main{display:grid;grid-template-columns:minmax(0,1.12fr) minmax(0,1fr);gap:12px;
 .clubs{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
 .club{min-height:54px;border-radius:10px;border:1.5px solid var(--line);background:var(--paper);font-weight:600;font-size:17px}
 .club:active{background:var(--fairway)}
+.club.pick{border-color:var(--ink);border-width:3px}
+.dists{display:grid;gap:6px}
+.dists label{display:grid;grid-template-columns:minmax(0,1fr) 4.6em minmax(0,1.5fr);align-items:center;gap:8px;font-weight:600}
+.dists input{min-height:44px;width:100%;border-radius:10px;border:1.5px solid var(--line);background:var(--paper);color:var(--ink);font:inherit;font-size:16px;text-align:right;padding:0 8px}
+.dists small{font-weight:400;font-size:12px;color:var(--ink-2)}
 .cardimg{display:block;width:100%;height:auto;border-radius:10px;border:1.5px solid var(--line)}
 .pair{display:grid;grid-template-columns:1fr 1fr;gap:8px}
 .stepper{display:flex;align-items:center;gap:14px}
@@ -144,6 +153,7 @@ textarea{width:100%;min-height:96px;border-radius:10px;border:1.5px solid var(--
         <div class="mid"><span class="num" id="nMid">–</span><span class="lab" id="midLab">to middle</span></div>
         <div class="row"><span class="lab">Front</span><span class="num" id="nFront">–</span></div>
       </div>
+      <div class="clubsug" id="clubSug" hidden></div>
       <p class="note" id="modeNote" hidden></p>
       <div class="target" id="target" hidden></div>
       <div class="haz" id="haz" hidden>
@@ -236,6 +246,10 @@ textarea{width:100%;min-height:96px;border-radius:10px;border:1.5px solid var(--
     <div class="set"><label for="clubsTxt">Clubs in your bag</label>
       <textarea id="clubsTxt"></textarea>
       <p class="muted">One per line or comma separated, in the order you want the buttons.</p>
+    </div>
+    <div class="set"><span class="lab" id="distLab">Club distances</span>
+      <div class="dists" id="distGrid"></div>
+      <p class="muted">Roughly how far you hit each club. Once you've logged 3 shots with a club, your own typical distance takes over.</p>
     </div>
     <div class="set"><span class="lab">Course data</span>
       <p class="muted" id="courseInfo"></p>
@@ -479,7 +493,7 @@ const LS = {
   set(k,v){ try{ localStorage.setItem(k, JSON.stringify(v)); return true; }catch(e){ return false; } }
 };
 const st = {
-  settings: Object.assign({ units:"m", auto:true, clubs:DEFAULT_CLUBS, par:{} }, LS.get("ty.settings",{})),
+  settings: Object.assign({ units:"m", auto:true, clubs:DEFAULT_CLUBS, par:{}, dist:{} }, LS.get("ty.settings",{})),
   raw: LS.get("ty.raw",null), course:null, pj:null, ll:null,
   hi: LS.get("ty.hole",0), fixes:[], gps:"wait", target:null,
   round: LS.get("ty.round",null), history: LS.get("ty.history",[]),
@@ -601,7 +615,7 @@ function showBanner(kind, msg){
 function render(){
   renderStatus(); renderHeader();
   const h=curHole();
-  if(!h){ ["nBack","nMid","nFront"].forEach(id=>$(id).textContent="–"); $("haz").hidden=true; $("target").hidden=true; $("modeNote").hidden=true; drawMap(); return; }
+  if(!h){ ["nBack","nMid","nFront"].forEach(id=>$(id).textContent="–"); $("clubSug").hidden=true; $("haz").hidden=true; $("target").hidden=true; $("modeNote").hidden=true; drawMap(); return; }
   const P=player(), g=greenNums(P.xy,h);
   $("nMid").textContent = fmt(g.mid);
   $("nFront").textContent = fmt(g.front);
@@ -616,6 +630,14 @@ function render(){
     note.hidden = !(P.acc>20);
     note.textContent = P.acc>20 ? "GPS is rough right now (±"+Math.round(P.acc)+" m). Give it a few seconds in the open." : "";
   }
+  const cd=clubDists(), sg=$("clubSug"), pick=g.on ? null : suggestClub(g.mid,cd);
+  sg.hidden=!!g.on;
+  if(!cd.length){ sg.className="clubsug none"; sg.textContent="Add your club distances in Settings (•••) to see which club to hit."; }
+  else if(pick){
+    sg.className="clubsug"; sg.innerHTML='<span class="lab">Club</span><b></b><span class="note"></span>';
+    sg.children[1].textContent=pick.club;
+    sg.children[2].textContent="typical "+fmt(pick.d)+(pick.leaves ? " · leaves "+fmt(pick.leaves) : pick.part ? " · part swing" : "");
+  }
   const prog = P.live ? pathInfo(P.xy,h.path).prog : 0;
   const hz=hazardsAhead(P.xy,h,prog,g.mid);
   const list=$("hazList");
@@ -627,6 +649,10 @@ function render(){
       li.innerHTML='<span class="sw"></span><span class="nm"></span><span class="num"></span><span class="num"></span>';
       li.children[0].style.background = z.kind==="Water" ? "var(--water)" : "var(--sand)";
       li.children[1].textContent = z.label.charAt(0).toUpperCase()+z.label.slice(1);
+      if(cd.length && z.carry!=null && !z.label.startsWith("Greenside") && z.reach<=cd[0].d){
+        const cc=carryClub(z.carry,cd), sm=document.createElement("small");
+        sm.textContent = cc ? cc+" carries it" : "No club carries it"; li.children[1].appendChild(sm);
+      }
       li.children[2].textContent = fmt(z.reach);
       li.children[3].textContent = z.carry==null ? "–" : fmt(z.carry);
       list.appendChild(li);
@@ -637,7 +663,8 @@ function render(){
     t.hidden=false;
     t.innerHTML='<span>Target</span><b></b><span></span><button id="tClear">Clear</button>';
     t.children[1].textContent = fmt(dist(P.xy,st.target));
-    t.children[2].textContent = "then " + fmt(dist(st.target,h.gc)) + " to middle";
+    const tc=suggestClub(dist(P.xy,st.target),cd);
+    t.children[2].textContent = (tc ? tc.club+" · " : "") + "then " + fmt(dist(st.target,h.gc)) + " to middle";
     $("tClear").onclick=()=>{ st.target=null; render(); };
   } else t.hidden=true;
   drawMap();
@@ -772,7 +799,8 @@ function renderShotSheet(){
   $("shotTitle").textContent = "Hole "+h.n+" · shot "+(rec.shots.length+1);
   chipRow($("lieChips"), LIES, st.lie, v=>{ st.lie=v; renderShotSheet(); });
   const grid=$("clubGrid"); grid.innerHTML="";
-  st.settings.clubs.forEach(c=>{ const b=document.createElement("button"); b.className="club"; b.textContent=c; b.onclick=()=>logShot(c); grid.appendChild(b); });
+  const P=player(), g=greenNums(P.xy,h), sug=(st.lie==="Green" || g.on) ? null : suggestClub(st.target ? dist(P.xy,st.target) : g.mid, clubDists());
+  st.settings.clubs.forEach(c=>{ const b=document.createElement("button"); b.className="club"+(sug && sug.club===c ? " pick" : ""); b.textContent=c; b.onclick=()=>logShot(c); grid.appendChild(b); });
   $("undoBtn").disabled = !rec.shots.length; $("penBtn").disabled = !rec.shots.length;
 }
 function logShot(club){
@@ -896,6 +924,49 @@ function renderCard(){
     pr.querySelectorAll("[data-card]").forEach(b=>b.onclick=()=>{ const id=+b.dataset.card, r=roundById(id); if(r && r.card) openCardPhoto(id); else pickCardPhoto(id); });
   }
 }
+/* ---------- Club suggestion ---------- */
+const MIN_LOGGED = 3; // shots logged with a club before its own typical distance replaces the typed one
+/* every club with a known distance in metres, longest first */
+function clubDists(){
+  const logged=computeStats(st.history.concat(st.round?[st.round]:[])).clubs, out=[];
+  st.settings.clubs.forEach(c=>{
+    const a=logged[c], typed=st.settings.dist[c];
+    if(a && a.length>=MIN_LOGGED) out.push({ club:c, d:median(a), n:a.length });
+    else if(typed>0) out.push({ club:c, d:typed, n:0 });
+  });
+  return out.sort((x,y)=>y.d-x.d);
+}
+/*SUG-START*/
+/* the club whose typical distance is nearest to m. leaves = what's left when even the longest club is well short;
+   part = the shortest club is still well long, so it's less than a full swing */
+function suggestClub(m, cd){
+  if(!cd.length || !(m>0)) return null;
+  const best=cd.reduce((b,x)=>Math.abs(x.d-m)<Math.abs(b.d-m) ? x : b);
+  return { club:best.club, d:best.d, leaves:(best===cd[0] && m-best.d>15) ? m-best.d : 0, part:best===cd[cd.length-1] && best.d-m>15 };
+}
+/* the shortest club that still flies a hazard, with 5% in hand because a typical distance is a median */
+function carryClub(carry, cd){ const ok=cd.filter(x=>x.d>=carry*1.05); return ok.length ? ok[ok.length-1].club : null; }
+/*SUG-END*/
+function renderDists(){
+  const grid=$("distGrid"), cd=clubDists(), yd=st.settings.units==="yd";
+  $("distLab").textContent="Club distances ("+unit()+")";
+  grid.innerHTML="";
+  st.settings.clubs.forEach(c=>{
+    const row=document.createElement("label"), nm=document.createElement("span"), inp=document.createElement("input"), info=document.createElement("small");
+    const typed=st.settings.dist[c], own=cd.find(x=>x.club===c && x.n);
+    nm.textContent=c;
+    inp.type="number"; inp.inputMode="numeric"; inp.min="1"; inp.max="400"; inp.placeholder="–";
+    inp.value = typed>0 ? fmt(typed) : "";
+    inp.onchange=()=>{
+      const v=parseFloat(inp.value);
+      if(v>0 && v<=400) st.settings.dist[c]=+(yd ? v/YD : v).toFixed(1); else { delete st.settings.dist[c]; inp.value=""; }
+      saveSettings(); render();
+    };
+    info.textContent = own ? "using your logged "+fmt(own.d)+" · "+own.n+" shots" : "";
+    row.append(nm, inp, info); grid.appendChild(row);
+  });
+}
+
 /* ---------- Card photos ---------- */
 /* Kept in the phone's IndexedDB, keyed by the round's start time: a photo is far too big for localStorage.
    The round itself only carries card:true so the scorecard can show the right button without a lookup. */
@@ -980,6 +1051,7 @@ function openSettings(){
   chipRow($("unitChips"), [{label:"Metres",value:"m"},{label:"Yards",value:"yd"}], st.settings.units, v=>{ st.settings.units=v; saveSettings(); openSettings(); render(); });
   $("autoAdv").checked=!!st.settings.auto;
   $("clubsTxt").value=st.settings.clubs.join("\n");
+  renderDists();
   const c=st.course;
   $("courseInfo").textContent = c && st.raw ? `${c.name}: ${c.counts.holes} holes, ${c.counts.greens} greens, ${c.counts.bunkers} bunkers, from ${st.raw.source} on ${new Date(st.raw.at).toLocaleDateString([], {day:"numeric",month:"short",year:"numeric"})}.` : "Not loaded yet.";
   const n=st.history.length + (st.round?1:0);
@@ -1036,7 +1108,7 @@ $("scMinus").onclick=()=>{ st.out.score=Math.max(1,st.out.score-1); st.out.touch
 $("scPlus").onclick=()=>{ st.out.score++; st.out.touched=true; renderOut(); };
 $("saveHole").onclick=saveHole;
 $("autoAdv").onchange=e=>{ st.settings.auto=e.target.checked; saveSettings(); };
-$("clubsTxt").onchange=e=>{ const c=e.target.value.split(/[\n,]+/).map(s=>s.trim()).filter(Boolean); st.settings.clubs=c.length?c:DEFAULT_CLUBS; saveSettings(); };
+$("clubsTxt").onchange=e=>{ const c=e.target.value.split(/[\n,]+/).map(s=>s.trim()).filter(Boolean); st.settings.clubs=c.length?c:DEFAULT_CLUBS; saveSettings(); renderDists(); render(); };
 $("refreshBtn").onclick=()=>{ hide("setSheet"); fetchCourse(); };
 $("cardFile").onchange=e=>{ const f=e.target.files[0]; e.target.value=""; if(f && photoFor!=null) addCardPhoto(photoFor, f); };
 $("photoShare").onclick=shareCardPhoto;
