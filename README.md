@@ -12,5 +12,10 @@ A single-page web app that installs to a phone's home screen and runs with no si
 Scorecard photos are shrunk to 1800 px and kept in the phone's own storage (IndexedDB),
 alongside the rounds. Nothing is uploaded anywhere; use "Share or save" to get one off the phone.
 
+Settings → Backup writes one `trentham-backup-<date>.txt` holding every round, card photo and
+setting. Restore merges by round start time: it adds what the phone is missing, never deletes, and
+only takes settings from the file when the phone has no rounds. The file is outside input, so
+rounds and settings are shape-checked before they are accepted.
+
 It has to be served over HTTPS (or from localhost): phones only allow GPS and
 offline storage on a secure page. Local test: `python3 -m http.server 8791 --bind 127.0.0.1`.

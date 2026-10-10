@@ -263,6 +263,15 @@ textarea{width:100%;min-height:96px;border-radius:10px;border:1.5px solid var(--
       <p class="muted" id="roundInfo"></p>
       <button class="btn small" id="exportBtn">Export rounds for analysis</button>
     </div>
+    <div class="set"><span class="lab">Backup</span>
+      <p class="muted" id="backupInfo"></p>
+      <div class="pair">
+        <button class="btn small" id="backupBtn">Back up rounds and photos</button>
+        <button class="btn small" id="restoreBtn">Restore from a backup</button>
+      </div>
+      <p class="muted">A backup is one file holding every round, card photo and setting. Restoring adds whatever this phone is missing and never deletes anything.</p>
+      <input type="file" id="restoreFile" hidden>
+    </div>
   </div>
 </div>
 
@@ -901,7 +910,7 @@ function renderCard(){
     d.querySelector("#endRound").onclick=e=>{
       if(!endArmed){ endArmed=true; e.target.textContent="Tap again to end the round"; return; }
       st.round.ended=Date.now(); st.history.push(st.round); LS.set("ty.history", st.history);
-      st.round=null; saveRound(); LS.set("ty.round", null); endArmed=false; toast("Round saved"); renderCard(); render();
+      st.round=null; saveRound(); LS.set("ty.round", null); endArmed=false; toast("Round saved. Back it up from Settings (•••)."); renderCard(); render();
     };
   } else sec(`<p class="muted">No round in progress. Logging a shot or holing out starts one.</p>`);
 
@@ -1051,6 +1060,88 @@ async function removeCardPhoto(){
     flagCard(photoId,false); hide("photoSheet"); toast("Card photo removed"); renderCard();
   }catch(e){ console.error("Card photo not removed:", e); toast("Couldn't remove the photo: "+((e && e.message) || e)); }
 }
+/* ---------- Backup and restore ---------- */
+/* Rounds, photos and settings live only in this browser's storage, so clearing Chrome's site data loses the lot.
+   A backup is one file with all three; photos travel inside it as data: URLs. */
+const blobToDataURL = b => new Promise((res,rej)=>{ const r=new FileReader(); r.onload=()=>res(r.result); r.onerror=()=>rej(r.error || new Error("a photo couldn't be read")); r.readAsDataURL(b); });
+const allRounds = () => st.history.concat(st.round ? [st.round] : []);
+function renderBackupInfo(){
+  const b=LS.get("ty.backupAt",null), n=allRounds().length;
+  $("backupBtn").disabled=!n;
+  if(!n){ $("backupInfo").textContent="Nothing to back up yet."; return; }
+  if(!b){ $("backupInfo").textContent="Not backed up yet. Your rounds and card photos are only in this phone's browser."; return; }
+  const since=allRounds().filter(r=>(r.ended || r.started) > b.at).length;
+  $("backupInfo").textContent="Last backup "+new Date(b.at).toLocaleDateString([], {day:"numeric",month:"short"})+": "+b.rounds+" round"+(b.rounds===1?"":"s")+", "+b.photos+" photo"+(b.photos===1?"":"s")+". "+
+    (since ? since+" round"+(since===1?"":"s")+" played or changed since." : "Nothing new since.");
+}
+async function makeBackup(){
+  try{
+    const rounds=allRounds(), photos={}; let missing=0;
+    for(const r of rounds){
+      if(!r.card) continue;
+      const b=await photoStore("readonly", s=>s.get(r.started));
+      if(b) photos[r.started]=await blobToDataURL(b); else missing++;
+    }
+    const data={ app:"Trentham Yardage", backup:1, made:new Date().toISOString(), settings:st.settings, round:st.round, history:st.history, photos };
+    /* .txt, not .json: phones only let a page hand text, images and the like to the share sheet */
+    const name="trentham-backup-"+new Date().toISOString().slice(0,10)+".txt";
+    const blob=new Blob([JSON.stringify(data)], { type:"text/plain" }), nP=Object.keys(photos).length;
+    const done=()=>{
+      LS.set("ty.backupAt", { at:Date.now(), rounds:rounds.length, photos:nP }); renderBackupInfo();
+      toast("Backup made: "+rounds.length+" round"+(rounds.length===1?"":"s")+", "+nP+" photo"+(nP===1?"":"s")+(missing ? ". "+missing+" photo"+(missing===1?" was":"s were")+" missing from this phone" : ""));
+    };
+    const file=new File([blob], name, { type:"text/plain" });
+    if(navigator.canShare && navigator.canShare({ files:[file] })){
+      try{ await navigator.share({ files:[file], title:name }); return done(); }
+      catch(e){ if(e && e.name==="AbortError") return; console.warn("Sharing the backup failed, saving it to Downloads instead:", e); }
+    }
+    const a=document.createElement("a"); a.href=URL.createObjectURL(blob); a.download=name; document.body.appendChild(a); a.click();
+    setTimeout(()=>{ URL.revokeObjectURL(a.href); a.remove(); }, 1500);
+    done();
+  }catch(e){ console.error("Backup not made:", e); toast("Couldn't make the backup: "+((e && e.message) || e)); }
+}
+/* a backup is a file from outside the app: take only rounds and settings shaped the way the app writes them */
+const okRound = r => !!r && typeof r==="object" && Number.isFinite(r.started) && !!r.holes && typeof r.holes==="object" && !Array.isArray(r.holes) &&
+  Object.entries(r.holes).every(([n,h])=> /^\d{1,2}$/.test(n) && h && typeof h==="object" && Array.isArray(h.shots) && h.shots.every(x=>x && typeof x==="object" && typeof x.club==="string") &&
+    (h.score==null || Number.isFinite(h.score)) && (h.putts==null || Number.isFinite(h.putts)));
+function cleanSettings(x){
+  if(!x || typeof x!=="object" || !Array.isArray(x.clubs)) return null;
+  const clubs=x.clubs.filter(c=>typeof c==="string" && c.trim()).map(c=>c.trim().slice(0,24)).slice(0,30), dist={}, par={};
+  if(!clubs.length) return null;
+  Object.entries(x.dist && typeof x.dist==="object" ? x.dist : {}).forEach(([c,d])=>{ if(clubs.includes(c) && Number.isFinite(d) && d>0 && d<=400) dist[c]=d; });
+  Object.entries(x.par && typeof x.par==="object" ? x.par : {}).forEach(([n,v])=>{ if(/^\d{1,2}$/.test(n) && [3,4,5].includes(v)) par[n]=v; });
+  return { units:x.units==="yd" ? "yd" : "m", auto:x.auto!==false, clubs, par, dist };
+}
+async function restoreBackup(file){
+  try{
+    let j; try{ j=JSON.parse(await file.text()); }catch(e){ throw new Error("that file isn't a backup from this app"); }
+    if(!j || j.app!=="Trentham Yardage" || j.backup!==1 || !Array.isArray(j.history)) throw new Error("that file isn't a backup from this app");
+    const fresh=!allRounds().length, have=new Set(allRounds().map(r=>r.started)), added=[];
+    let skipped=0, pics=0, badPics=0;
+    j.history.concat(j.round ? [j.round] : []).forEach(r=>{
+      if(!okRound(r)){ skipped++; return; }
+      if(have.has(r.started)) return;
+      delete r.card; delete r.inProgress; have.add(r.started); added.push(r);
+      if(r===j.round && !st.round) st.round=r; else st.history.push(r);
+    });
+    st.history.sort((a,b)=>a.started-b.started);
+    const set=fresh ? cleanSettings(j.settings) : null;
+    if(set) st.settings=set;
+    if(!LS.set("ty.history", st.history) || !saveRound() || !saveSettings()) throw new Error("this phone's storage is full");
+    for(const [k,url] of Object.entries(j.photos && typeof j.photos==="object" ? j.photos : {})){
+      const id=+k;
+      if(!have.has(id) || typeof url!=="string" || !url.startsWith("data:image/")){ badPics++; continue; }
+      try{
+        if(!(await photoStore("readonly", s=>s.get(id)))){ const b=await (await fetch(url)).blob(); await photoStore("readwrite", s=>s.put(b,id)); pics++; }
+        flagCard(id,true);
+      }catch(e){ console.error("A card photo in the backup wasn't restored:", e); badPics++; }
+    }
+    if(st.hi>=0) LS.set("ty.hole", st.hi);
+    render(); openSettings();
+    toast((added.length || pics ? "Restored "+added.length+" round"+(added.length===1?"":"s")+" and "+pics+" photo"+(pics===1?"":"s") : "Nothing new in that backup: this phone already has it all")+
+      (set ? ", plus your settings" : "")+(skipped ? ". "+skipped+" damaged round"+(skipped===1?"":"s")+" skipped" : "")+(badPics ? ". "+badPics+" photo"+(badPics===1?"":"s")+" couldn't be restored" : ""));
+  }catch(e){ console.error("Backup not restored:", e); toast("Couldn't restore: "+((e && e.message) || e)); }
+}
 const esc = s => String(s).replace(/[&<>"]/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
 /* ---------- Settings ---------- */
@@ -1064,6 +1155,7 @@ function openSettings(){
   const n=st.history.length + (st.round?1:0);
   $("roundInfo").textContent = n ? `${st.history.length} saved round${st.history.length===1?"":"s"}${st.round?" plus the one in progress":""}. Export them and send the file to Claude for a strokes-gained breakdown.` : "No rounds yet.";
   $("exportBtn").disabled=!n;
+  renderBackupInfo();
   show("setSheet");
 }
 async function exportRounds(){
@@ -1121,6 +1213,9 @@ $("cardFile").onchange=e=>{ const f=e.target.files[0]; e.target.value=""; if(f &
 $("photoShare").onclick=shareCardPhoto;
 $("photoReplace").onclick=()=>pickCardPhoto(photoId);
 $("photoRemove").onclick=removeCardPhoto;
+$("backupBtn").onclick=makeBackup;
+$("restoreBtn").onclick=()=>$("restoreFile").click();
+$("restoreFile").onchange=e=>{ const f=e.target.files[0]; e.target.value=""; if(f) restoreBackup(f); };
 $("importBtn").onclick=()=>$("importFile").click();
 $("importFile").onchange=e=>{ if(e.target.files[0]) importFile(e.target.files[0]); e.target.value=""; };
 $("map").addEventListener("click", e=>{
